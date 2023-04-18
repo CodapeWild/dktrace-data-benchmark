@@ -1,0 +1,13 @@
+{
+  "input": {
+    "service_map": "./trace.json",
+    "tracer": ["ddtrace", "jaeger", "opentelemetry", "skywalking", "zipkin"]
+  },
+  "output": {
+    "host": "127.0.0.1",
+    "port": 9529,
+    "path": "",
+    "schema": ["http", "grpc"],
+    "headers": { "Content-Type": ["application/json"] }
+  }
+}
