@@ -1,7 +1,6 @@
 {
   "input": {
-    "service_map": "./trace.json",
-    "tracer": ["ddtrace", "jaeger", "opentelemetry", "skywalking", "zipkin"]
+    "tracer": []
   },
   "output": {
     "host": "127.0.0.1",
