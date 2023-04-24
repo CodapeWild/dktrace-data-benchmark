@@ -1,0 +1,44 @@
+[
+  {
+    "id": 1,
+    "name": "user-agent",
+    "call": [{ "id": 2 }, { "id": 3 }, { "id": 4 }]
+  },
+  {
+    "id": 2,
+    "name": "auth-server",
+    "action": "/auth",
+    "call": [{ "id": 5 }]
+  },
+  {
+    "id": 5,
+    "name": "redis",
+    "action": "get user-xxx-login-status",
+    "status": "error",
+    "message": "The key does not exist or has expired"
+  },
+  {
+    "id": 3,
+    "name": "login-server",
+    "action": "/uid/pswd",
+    "call": [{ "id": 6 }]
+  },
+  {
+    "id": 6,
+    "name": "mysql",
+    "action": "select * from user where uid=! and pswd=?;",
+    "status": "ok"
+  },
+  {
+    "id": 4,
+    "name": "auth-server",
+    "action": "/start/session",
+    "call": [{ "id": 7 }]
+  },
+  {
+    "id": 7,
+    "name": "redis",
+    "action": "set user-xxx-login-status ok EX 600",
+    "status": "ok"
+  }
+]

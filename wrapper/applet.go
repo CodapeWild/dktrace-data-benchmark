@@ -5,8 +5,6 @@ import "net/http"
 type Client struct {
 }
 
-type
-
 func NewServer(name string, host string, port int, handlers map[string]http.HandlerFunc) *Server {
 
 }
