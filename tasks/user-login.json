@@ -2,13 +2,17 @@
   {
     "id": 1,
     "name": "user-agent",
-    "call": [{ "id": 2 }, { "id": 3 }, { "id": 4 }]
+    "calls": [
+      { "id": 2, "outgoing": true },
+      { "id": 3, "outgoing": true },
+      { "id": 4, "outgoing": true }
+    ]
   },
   {
     "id": 2,
     "name": "auth-server",
     "action": "/auth",
-    "call": [{ "id": 5 }]
+    "calls": [{ "id": 5 }]
   },
   {
     "id": 5,
@@ -21,7 +25,7 @@
     "id": 3,
     "name": "login-server",
     "action": "/uid/pswd",
-    "call": [{ "id": 6 }]
+    "calls": [{ "id": 6 }]
   },
   {
     "id": 6,
@@ -33,7 +37,7 @@
     "id": 4,
     "name": "auth-server",
     "action": "/start/session",
-    "call": [{ "id": 7 }]
+    "calls": [{ "id": 7 }]
   },
   {
     "id": 7,

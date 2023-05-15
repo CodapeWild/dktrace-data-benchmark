@@ -2,85 +2,118 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 )
 
-type task struct {
-	ID      int     `json:"id"`
-	Name    string  `json:"name"`
-	Action  string  `json:"action"`
-	Status  string  `json:"status"`
-	Message string  `json:"message"`
-	Call    []*task `json:"call"`
-}
-
-func parseTaskJSON(path string) ([]*task, error) {
+func newTaskFromJSONFile(path string) (task, error) {
 	bts, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	var task []*task
-	err = json.Unmarshal(bts, &task)
+	var tk task
+	err = json.Unmarshal(bts, &tk)
 
-	return task, err
+	return tk, err
 }
 
-func findTaskByID(id int, tasks []*task) *task {
-	for _, t := range tasks {
-		if t.ID == id {
-			return t
+type task []*option
+
+func (tk task) findOptionkByID(id int) (*option, bool) {
+	for _, op := range tk {
+		if op.ID == id {
+			return op, true
 		}
 	}
 
-	return nil
+	return nil, false
 }
 
-func buildNodeByTask(task *task, n *node) {
-	if task == nil || n == nil {
+func (tk task) createTree() *tree {
+	if len(tk) == 0 {
+		return nil
+	}
+
+	root := tk[0].createNode("")
+	var buildQue = root.children
+	for i := 0; i < len(buildQue); i++ {
+		node := buildQue[i]
+		tk.setNode(node)
+		buildQue = append(buildQue, node.children...)
+	}
+
+	return &tree{root: root}
+}
+
+func (tk task) setNode(uncomplete *node) {
+	op, ok := tk.findOptionkByID(uncomplete.id)
+	if !ok {
 		return
 	}
 
-	n.id = task.ID
-	n.name = task.Name
-	n.action = task.Action
-	n.status = task.Status
-	n.message = task.Message
-	for i := range task.Call {
-		n.children = append(n.children, &node{id: task.Call[i].ID})
+	if uncomplete.service == "" {
+		uncomplete.service = op.Name
 	}
+	uncomplete.name = op.Name
+	uncomplete.action = op.Action
+	uncomplete.status = op.Status
+	uncomplete.message = op.Message
+	for _, c := range op.Calls {
+		if c.Outgoing {
+			uncomplete.children = append(uncomplete.children, &node{id: c.ID})
+		} else {
+			uncomplete.children = append(uncomplete.children, &node{id: c.ID, service: op.Name})
+		}
+	}
+}
+
+type option struct {
+	ID      int     `json:"id"`
+	Name    string  `json:"name"`
+	Action  string  `json:"action"`
+	Status  string  `json:"status"`
+	Message string  `json:"message"`
+	Calls   []*call `json:"calls"`
+}
+
+func (op *option) createNode(service string) *node {
+	if service == "" {
+		service = op.Name
+	}
+
+	n := &node{
+		id:      op.ID,
+		service: service,
+		name:    op.Name,
+		action:  op.Action,
+		status:  op.Status,
+		message: op.Message,
+	}
+	for _, c := range op.Calls {
+		if c.Outgoing {
+			n.children = append(n.children, &node{id: c.ID})
+		} else {
+			n.children = append(n.children, &node{id: c.ID, service: service})
+		}
+	}
+
+	return n
+}
+
+type call struct {
+	ID       int  `json:"id"`
+	Outgoing bool `json:"outgoing"`
+	service  string
 }
 
 type node struct {
 	id       int
+	service  string
 	name     string
 	action   string
 	status   string
 	message  string
 	children []*node
-}
-
-func newTree(tasks []*task) (*tree, error) {
-	if len(tasks) == 0 {
-		return nil, errors.New("input tasks data is empty")
-	}
-
-	var root = &node{}
-	buildNodeByTask(tasks[0], root)
-
-	var buildQueue []*node
-	buildQueue = append(buildQueue, root.children...)
-	for i := 0; i < len(buildQueue); i++ {
-		if task := findTaskByID(buildQueue[i].id, tasks); task != nil {
-			buildNodeByTask(task, buildQueue[i])
-			buildQueue = append(buildQueue, buildQueue[i].children...)
-		} else {
-			return nil, errors.New("malformed tasks data")
-		}
-	}
-
-	return &tree{root: root}, nil
 }
 
 type tree struct {

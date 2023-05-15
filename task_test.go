@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"testing"
@@ -32,13 +33,14 @@ func nodePrinter(node *node) string {
 }
 
 func TestBuildTree(t *testing.T) {
-	tasks, err := parseTaskJSON("./tasks/user-login.json")
+	tasks, err := newTaskFromJSONFile("./tasks/user-login.json")
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
-	tree, err := newTree(tasks)
-	if err != nil {
-		log.Fatalln(err.Error())
+	tree := tasks.createTree()
+	jsonstr := nodePrinter(tree.root)
+	if !json.Valid([]byte(jsonstr)) {
+		log.Fatalln("invalid JSON string")
 	}
 
 	log.Println(nodePrinter(tree.root))
