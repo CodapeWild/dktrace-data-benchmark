@@ -1,12 +1,108 @@
-{
-  "input": {
-    "tracer": []
+[
+  {
+    "tracer": "ddtrace",
+    "task_config": "./tasks/user-login.json",
+    "send_threads": 10,
+    "send_times_per_thread": 100,
+    "collector_proto": "http",
+    "collector_ip": "127.0.0.1",
+    "collector_port": 9529,
+    "collector_path": "/v0.4/traces"
   },
-  "output": {
-    "host": "127.0.0.1",
-    "port": 9529,
-    "path": "",
-    "schema": ["http", "grpc"],
-    "headers": { "Content-Type": ["application/json"] }
+  {
+    "tracer": "ddtrace",
+    "task_config": "./tasks/user-login.json",
+    "send_threads": 10,
+    "send_times_per_thread": 100,
+    "collector_proto": "http",
+    "collector_ip": "127.0.0.1",
+    "collector_port": 9529,
+    "collector_path": "/v0.3/traces"
+  },
+  {
+    "tracer": "jaeger",
+    "task_config": "./tasks/user-login.json",
+    "send_threads": 10,
+    "send_times_per_thread": 100,
+    "collector_proto": "udp",
+    "collector_ip": "127.0.0.1",
+    "collector_port": 6831
+  },
+  {
+    "tracer": "jaeger",
+    "task_config": "./tasks/user-login.json",
+    "send_threads": 10,
+    "send_times_per_thread": 100,
+    "collector_proto": "http",
+    "collector_ip": "127.0.0.1",
+    "collector_port": 9529,
+    "collector_path": "/apis/traces"
+  },
+  {
+    "tracer": "otel",
+    "task_config": "./tasks/user-login.json",
+    "send_threads": 10,
+    "send_times_per_thread": 100,
+    "collector_proto": "http",
+    "collector_ip": "127.0.0.1",
+    "collector_port": 9529,
+    "collector_path": "/otel/v1/trace"
+  },
+  {
+    "tracer": "otel",
+    "task_config": "./tasks/user-login.json",
+    "send_threads": 10,
+    "send_times_per_thread": 100,
+    "collector_proto": "grpc",
+    "collector_ip": "127.0.0.1",
+    "collector_port": 4317
+  },
+  {
+    "tracer": "pinpoint",
+    "task_config": "./tasks/user-login.json",
+    "send_threads": 10,
+    "send_times_per_thread": 100,
+    "collector_proto": "grpc",
+    "collector_ip": "127.0.0.1",
+    "collector_port": 9991
+  },
+  {
+    "tracer": "skywalking",
+    "task_config": "./tasks/user-login.json",
+    "send_threads": 10,
+    "send_times_per_thread": 100,
+    "collector_proto": "http",
+    "collector_ip": "127.0.0.1",
+    "collector_port": 9529,
+    "collector_path": "/v3/trace"
+  },
+  {
+    "tracer": "skywalking",
+    "task_config": "./tasks/user-login.json",
+    "send_threads": 10,
+    "send_times_per_thread": 100,
+    "collector_proto": "grpc",
+    "collector_ip": "127.0.0.1",
+    "collector_port": 11800
+  },
+  {
+    "tracer": "zipkin",
+    "task_config": "./tasks/user-login.json",
+    "send_threads": 10,
+    "send_times_per_thread": 100,
+    "collector_proto": "http",
+    "collector_ip": "127.0.0.1",
+    "collector_port": 9529,
+    "collector_path": "/api/v1/spans"
+  },
+  {
+    "tracer": "zipkin",
+    "task_config": "./tasks/user-login.json",
+    "send_threads": 10,
+    "send_times_per_thread": 100,
+    "collector_proto": "http",
+    "collector_ip": "127.0.0.1",
+    "collector_port": 9529,
+    "collector_path": "/api/v2/spans"
   }
-}
+]
