@@ -2,9 +2,9 @@
 
 ## how to
 
-start a demo and send testing data to collector
+start a demo and send trace data to collector
 
-with application startup parameters
+- with application startup parameters
 
 > start demo with config file
 
@@ -25,7 +25,7 @@ with application startup parameters
       -collector_path /v0.4/traces
 ```
 
-with environment variables
+- with environment variables
 
 ```shell
 export TDD_TRACER=[ddtrace | jeager | otel | pinpoint | skywalking | zipkin]
@@ -37,3 +37,11 @@ export TDD_COLLECTOR_IP=127.0.0.1
 export TDD_COLLECTOR_PORT=9529
 export TDD_COLLECTOR_PATH=/v0.4/traces
 ```
+
+> start demo configuration priority will be
+
+- start up with `-config` parameter
+- start up with other parameters but except `-config` parameter
+- start up with environment variables
+- start up with `./config.json` file if exits
+- start up with default configuration
