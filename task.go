@@ -120,13 +120,15 @@ type tree struct {
 	root *node
 }
 
-func traverse(node *node, f func(node *node)) {
-	if node == nil || f == nil {
+func traverse(n *node, p func(n *node) bool) {
+	if n == nil || p == nil {
 		return
 	}
 
-	f(node)
-	for _, next := range node.children {
-		traverse(next, f)
+	if p(n) {
+		return
+	}
+	for _, c := range n.children {
+		traverse(c, p)
 	}
 }
