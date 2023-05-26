@@ -5,8 +5,6 @@ import (
 	"time"
 )
 
-type ctxNodeInfoKey struct{}
-
 func (n *node) spawn(ctx context.Context) {
 	start := time.Now().UnixNano()
 

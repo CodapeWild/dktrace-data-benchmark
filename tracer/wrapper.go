@@ -8,19 +8,19 @@ import (
 
 var globalTracer Tracer
 
-type Span interface {
+type span interface {
 	SetTag(key string, value interface{})
 	EndSpan()
 }
 
 type Tracer interface {
-	StartSpan(ctx context.Context) (Span, context.Context)
+	StartSpan(ctx context.Context) (span, context.Context)
 }
 
 type ddtracerwrapper struct {
 }
 
-func (dd *ddtracerwrapper) StartSpan(ctx context.Context) (Span, context.Context) {
+func (dd *ddtracerwrapper) StartSpan(ctx context.Context) (span, context.Context) {
 	n := ctx.Value(ctxNodeInfoKey{}).(*node)
 	operation := "unknow-operation"
 	if n != nil {
