@@ -42,7 +42,7 @@ func handleTracesWrapper(pattern string) http.HandlerFunc {
 		var err error
 		switch pattern {
 		case "/spans", "/v0.1/spans":
-			var spans []pb.Spans
+			var spans []pb.Span
 			err = json.NewDecoder(req.Body).Decode(&spans)
 		case "/v0.2/traces", "/v0.3/traces", "/v0.4/traces":
 		case "/v0.5/traces":

@@ -6,6 +6,8 @@ import (
 	ddtracer "gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 )
 
+type ctxNodeInfoKey struct{}
+
 var globalTracer Tracer
 
 type span interface {
