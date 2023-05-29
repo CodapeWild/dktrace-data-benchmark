@@ -2,15 +2,21 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"log"
 	"mime"
+	"net"
 	"net/http"
 	"sync"
+	"time"
 )
 
-var bufpool = sync.Pool{
-	New: func() any { return new(bytes.Buffer) },
+type Amplifier interface {
+	StartThreads(ctx context.Context)
+	Close()
 }
+
+var bufpool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 
 func getBuffer() *bytes.Buffer {
 	return bufpool.Get().(*bytes.Buffer)
@@ -29,4 +35,19 @@ func getMetaType(req *http.Request, def string) string {
 	}
 
 	return mt
+}
+
+func newSingleHostTransport() *http.Transport {
+	return &http.Transport{
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConnsPerHost:   100,
+		MaxConnsPerHost:       100,
+		IdleConnTimeout:       10 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+		ExpectContinueTimeout: time.Second,
+		WriteBufferSize:       10 * 1024,
+	}
 }
