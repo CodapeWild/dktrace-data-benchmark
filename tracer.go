@@ -6,23 +6,24 @@ import (
 	ddtracer "gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 )
 
-type ctxNodeInfoKey struct{}
-
-var globalTracer Tracer
-
-type span interface {
+type Span interface {
 	SetTag(key string, value interface{})
 	EndSpan()
 }
 
 type Tracer interface {
-	StartSpan(ctx context.Context) (span, context.Context)
+	Start(agentAddress, service string)
+	StartSpan(ctx context.Context) (Span, context.Context)
+	Stop()
 }
 
-type ddtracerwrapper struct {
+type ddtracerwrapper struct{}
+
+func (dd *ddtracerwrapper) Start(agentAddress, service string) {
+	ddtracer.Start(ddtracer.WithAgentAddr(agentAddress), ddtracer.WithService(service), ddtracer.WithDebugMode(true), ddtracer.WithLogStartup(true))
 }
 
-func (dd *ddtracerwrapper) StartSpan(ctx context.Context) (span, context.Context) {
+func (dd *ddtracerwrapper) StartSpan(ctx context.Context) (Span, context.Context) {
 	n := ctx.Value(ctxNodeInfoKey{}).(*node)
 	operation := "unknow-operation"
 	if n != nil {
@@ -32,6 +33,10 @@ func (dd *ddtracerwrapper) StartSpan(ctx context.Context) (span, context.Context
 	span, ctx := ddtracer.StartSpanFromContext(ctx, operation)
 
 	return &ddspanwrapper{Span: span}, ctx
+}
+
+func (dd *ddtracerwrapper) Stop() {
+	ddtracer.Stop()
 }
 
 type ddspanwrapper struct {

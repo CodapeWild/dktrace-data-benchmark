@@ -14,34 +14,31 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/trace/pb"
 )
 
-const (
-	v01 = "v01"
-	v02 = "v02"
-	v03 = "v03"
-	v04 = "v04"
-	v05 = "v05"
-	v07 = "v07"
+var (
+	V01            = "v01"
+	V02            = "v02"
+	V03            = "v03"
+	V04            = "v04"
+	V05            = "v05"
+	V07            = "v07"
+	PatternVersion = map[string]string{
+		"/spans": V01, "/v0.1/spans": V01,
+		"/v0.2/traces": V02,
+		"/v0.3/traces": V03,
+		"/v0.4/traces": V04,
+		"/v0.5/traces": V05,
+		"/v0.7/traces": V07,
+	}
 )
 
-func NewDDAgent() *DDAgent {
+func NewDDAgent(amp *DDAmplifier) *DDAgent {
+	if amp == nil {
+		log.Fatalln("traces amplifier for ddtrace agent can not be nil")
+	}
+
 	dd := &DDAgent{}
-	for _, pattern := range []string{"/spans", "/v0.1/spans", "/v0.2/traces", "/v0.3/traces", "/v0.4/traces", "/v0.5/traces", "/v0.7/traces"} {
-		switch pattern {
-		case "/spans", "/v0.1/spans":
-			handleTracesWrapper(v01)
-		case "/v0.2/traces":
-			handleTracesWrapper(v02)
-		case "/v0.3/traces":
-			handleTracesWrapper(v03)
-		case "/v0.4/traces":
-			handleTracesWrapper(v04)
-		case "/v0.5/traces":
-			handleTracesWrapper(v05)
-		case "/v0.7/traces":
-			handleTracesWrapper(v07)
-		default:
-			log.Fatalln("unrecognized URL pattern for DDTrace")
-		}
+	for pattern, version := range PatternVersion {
+		dd.HandleFunc(pattern, handleTracesWrapper(version, amp))
 	}
 
 	return dd
@@ -59,7 +56,7 @@ func (dd *DDAgent) Start(addr string) {
 	}()
 }
 
-func handleTracesWrapper(version string) http.HandlerFunc {
+func handleTracesWrapper(version string, amp *DDAmplifier) http.HandlerFunc {
 	return func(resp http.ResponseWriter, req *http.Request) {
 		tc := countTraces(req)
 		if tc == 0 {
@@ -73,21 +70,21 @@ func handleTracesWrapper(version string) http.HandlerFunc {
 			err    error
 		)
 		switch version {
-		case v01:
+		case V01:
 			var spans []*pb.Span
 			if err = json.NewDecoder(req.Body).Decode(&spans); err == nil {
 				traces = append(traces, pb.Trace(spans))
 			}
-		case v02, v03, v04:
+		case V02, V03, V04:
 			traces, err = decodeRequest(req)
-		case v05:
+		case V05:
 			buf := getBuffer()
 			defer putBuffer(buf)
 
 			if _, err = io.Copy(buf, req.Body); err == nil {
 				err = traces.UnmarshalMsgDictionary(buf.Bytes())
 			}
-		case v07:
+		case V07:
 			buf := getBuffer()
 			defer putBuffer(buf)
 
@@ -95,11 +92,36 @@ func handleTracesWrapper(version string) http.HandlerFunc {
 				_, err = traces.UnmarshalMsg(buf.Bytes())
 			}
 		}
+
+		// reply ok or error based on parameter err
 		reply(version, resp, err)
+		if err != nil {
+			log.Println(err.Error())
 
-		if err == nil && len(traces) == 0 {
+			return
+		} else if len(traces) == 0 {
+			log.Println("empty traces")
 
+			return
 		}
+
+		log.Printf("%v", traces)
+		amp.PutTraces(traces)
+	}
+}
+
+func reply(version string, resp http.ResponseWriter, err error) {
+	if err == nil {
+		resp.WriteHeader(http.StatusOK)
+		switch version {
+		case V01, V02, V03:
+			io.WriteString(resp, "OK\n")
+		default:
+			resp.Header().Set("Content-Type", "application/json")
+			resp.Write([]byte("{}"))
+		}
+	} else {
+		resp.WriteHeader(http.StatusBadRequest)
 	}
 }
 
@@ -139,53 +161,25 @@ func countTraces(req *http.Request) int {
 	}
 }
 
-func reply(version string, resp http.ResponseWriter, err error) {
-	if err == nil {
-		resp.WriteHeader(http.StatusOK)
-		switch version {
-		case v01, v02, v03:
-			io.WriteString(resp, "OK\n")
-		default:
-			resp.Header().Set("Content-Type", "application/json")
-			resp.Write([]byte("{}"))
-		}
-	} else {
-		resp.WriteHeader(http.StatusBadRequest)
-		log.Println(err.Error())
-	}
-}
-
-func NewDDAmplifier(version string, ip string, port int, path string, threads, repeat int, spanCount int) *DDAmplifier {
+func NewDDAmplifier(ip string, port int, path string, expectedSpansCount, threads, repeat int) *DDAmplifier {
 	return &DDAmplifier{
-		version:   version,
-		addr:      fmt.Sprintf("http://%s:%s%s"),
-		threads:   threads,
-		repeat:    repeat,
-		spanCount: spanCount,
-		tc:        make(chan pb.Traces),
-		closer:    make(chan struct{}),
+		addr:               fmt.Sprintf("http://%s:%s%s", ip, port, path),
+		expectedSpansCount: expectedSpansCount,
+		threads:            threads,
+		repeat:             repeat,
+		tc:                 make(chan pb.Traces),
+		closer:             make(chan struct{}),
 	}
 }
 
 type DDAmplifier struct {
-	version         string
-	addr            string
-	threads, repeat int
-	spanCount       int
-	traces          pb.Traces
-	tc              chan pb.Traces
-	closer          chan struct{}
-}
-
-func (ddamp *DDAmplifier) putTraces(traces pb.Traces) {
-	ddamp.traces = append(ddamp.traces, traces...)
-	var c int
-	for i := range ddamp.traces {
-		c += len(ddamp.traces[i])
-	}
-	if c >= ddamp.spanCount {
-		ddamp.tc <- ddamp.traces
-	}
+	addr               string
+	threads, repeat    int
+	expectedSpansCount int
+	receivedSpansCount int
+	traces             pb.Traces
+	tc                 chan pb.Traces
+	closer             chan struct{}
 }
 
 func (ddamp *DDAmplifier) StartThreads(ctx context.Context) {
@@ -207,6 +201,16 @@ func (ddamp *DDAmplifier) StartThreads(ctx context.Context) {
 	case traces := <-ddamp.tc:
 		ddamp.runThreads(traces)
 		log.Println("ddtrace amplifier finished sending traces")
+	}
+}
+
+func (ddamp *DDAmplifier) PutTraces(traces pb.Traces) {
+	ddamp.traces = append(ddamp.traces, traces...)
+	for i := range ddamp.traces {
+		ddamp.receivedSpansCount += len(ddamp.traces[i])
+	}
+	if ddamp.receivedSpansCount >= ddamp.expectedSpansCount {
+		ddamp.tc <- ddamp.traces
 	}
 }
 
@@ -280,4 +284,16 @@ func changeIDs(traces pb.Traces) {
 			}
 		}
 	}
+}
+
+func BuildDDAgentForWork(agentAddress string, endpointIP string, endpointPort int, endpointPath string, expectedSpansCount, threads, repeat int) context.CancelFunc {
+	ctx, canceler := context.WithCancel(context.TODO())
+
+	amp := NewDDAmplifier(endpointIP, endpointPort, endpointPath, expectedSpansCount, threads, repeat)
+	amp.StartThreads(ctx)
+
+	agent := NewDDAgent(amp)
+	agent.Start(agentAddress)
+
+	return canceler
 }

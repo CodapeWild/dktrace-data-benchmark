@@ -7,10 +7,12 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // start up parameters
-// -config ./config.json
+// -configFilePath ./configFilePath.json
+// -disable_logs false
 // -tracer ddtrace | jeager | otel | pinpoint | skywalking | zipkin
 // -task_config ./tasks/def.json
 // -send_threads 10
@@ -20,7 +22,8 @@ import (
 // -collector_port 9529
 // -collector_path /v0.3/trace
 var (
-	config             = flag.String("config", "", "A JSON file is used to configurate how to start demo.")
+	configFilePath     = flag.String("config", "", "A JSON file is used for demo configuration.")
+	disableLog         = flag.Bool("disable_log", false, "disable output for log.")
 	tracer             = flag.String("tracer", "", "Tracer SDK that is used to generate trace data, only one value is accepted. Currently ddtrace or jeager or otel or pinpoint or skywalking or zipkin is accecpted.")
 	taskConfig         = flag.String("task_config", "", "A JSON file contains the task that describes how the service trace would look like.")
 	sendThreads        = flag.Int("send_threads", 0, "Define the number of threads need to start sending trace data.")
@@ -32,9 +35,14 @@ var (
 )
 
 var (
-	envKeys       = []string{"TDD_TRACER", "TDD_TASK_CONFIG", "TDD_THREADS", "TDD_SEND_TIMES_PER_THREAD", "TDD_COLLECTOR_PROTO", "TDD_COLLECTOR_IP", "TDD_COLLECTOR_PORT", "TDD_COLLECTOR_PATH"}
-	tracerConfigs []*tracerConfig
+	envKeys  = []string{"TDD_DISABLE_LOG", "TDD_TRACER", "TDD_TASK_CONFIG", "TDD_THREADS", "TDD_SEND_TIMES_PER_THREAD", "TDD_COLLECTOR_PROTO", "TDD_COLLECTOR_IP", "TDD_COLLECTOR_PORT", "TDD_COLLECTOR_PATH"}
+	demoConf *demoConfig
 )
+
+type demoConfig struct {
+	DisableConfig bool            `json:"disable_log"`
+	Tracers       []*tracerConfig `json:"tracers"`
+}
 
 type tracerConfig struct {
 	Tracer             string `json:"tracer"`
@@ -47,25 +55,27 @@ type tracerConfig struct {
 	CollectorPath      string `json:"collector_path"`
 }
 
-func loadConfigFile(path string) ([]*tracerConfig, error) {
+func loadConfigFile(path string) (*demoConfig, error) {
 	bts, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	configs := &[]*tracerConfig{}
-	if err = json.Unmarshal(bts, configs); err != nil {
+	var demoConf demoConfig
+	if err = json.Unmarshal(bts, &demoConf); err != nil {
 		return nil, err
 	}
 
-	return *configs, nil
+	return &demoConf, nil
 }
 
-func loadStartupParameters() (*tracerConfig, error) {
+func loadStartupParameters() (*demoConfig, error) {
 	var (
+		isLog  bool
 		config = &tracerConfig{}
 		ok     = true
 	)
+	isLog = *disableLog
 	if *tracer != "" {
 		config.Tracer = *tracer
 	} else {
@@ -108,11 +118,12 @@ func loadStartupParameters() (*tracerConfig, error) {
 		err = fmt.Errorf("load startup parameters failed: %v", os.Args)
 	}
 
-	return config, err
+	return &demoConfig{DisableConfig: isLog, Tracers: []*tracerConfig{config}}, err
 }
 
-func loadEnvVariables() (*tracerConfig, error) {
+func loadEnvVariables() (*demoConfig, error) {
 	var (
+		isLog  bool
 		config = &tracerConfig{}
 		ok     = true
 	)
@@ -124,6 +135,10 @@ func loadEnvVariables() (*tracerConfig, error) {
 			ok = true
 		} else if ok && v != "" {
 			switch key {
+			case "TDD_DISABLE_LOG":
+				if b := strings.ToLower(v); b == "true" {
+					isLog = true
+				}
 			case "TDD_TRACER":
 				config.Tracer = v
 			case "TDD_TASK_CONFIG":
@@ -157,51 +172,59 @@ func loadEnvVariables() (*tracerConfig, error) {
 		}
 	}
 
-	return config, nil
+	return &demoConfig{DisableConfig: isLog, Tracers: []*tracerConfig{config}}, nil
 }
 
-func loadDefaultStartupParameters() *tracerConfig {
-	return &tracerConfig{
-		Tracer:             "ddtrace",
-		TaskConfig:         "./tasks/def.json",
-		SendThreads:        10,
-		SendTimesPerThread: 100,
-		CollectorProto:     "http",
-		CollectorIP:        "127.0.0.1",
-		CollectorPort:      9529,
-		CollectorPath:      "/v0.4/traces",
-	}
+func loadDefaultStartupParameters() *demoConfig {
+	return &demoConfig{
+		DisableConfig: false,
+		Tracers: []*tracerConfig{{
+			Tracer:             "ddtrace",
+			TaskConfig:         "./tasks/def.json",
+			SendThreads:        10,
+			SendTimesPerThread: 100,
+			CollectorProto:     "http",
+			CollectorIP:        "127.0.0.1",
+			CollectorPort:      9529,
+			CollectorPath:      "/v0.4/traces",
+		}}}
 }
 
 func init() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	log.SetOutput(os.Stdout)
+	defer func() {
+		log.SetFlags(log.LstdFlags | log.Lshortfile)
+		if demoConf.DisableConfig {
+			log.SetOutput(nil)
+		} else {
+			log.SetOutput(os.Stdout)
+		}
+	}()
 
 	if len(os.Args) > 1 {
 		flag.Parse()
 	}
 
 	var err error
-	if *config != "" {
-		if tracerConfigs, err = loadConfigFile(*config); err == nil {
+	// config from config file path which read from startup parameters
+	if *configFilePath != "" {
+		if demoConf, err = loadConfigFile(*configFilePath); err == nil {
 			return
 		}
 	}
-	var config *tracerConfig
-	if config, err = loadStartupParameters(); err == nil {
-		tracerConfigs = []*tracerConfig{config}
-
+	// config from startup parameters
+	if demoConf, err = loadStartupParameters(); err == nil {
 		return
 	}
-	if config, err = loadEnvVariables(); err == nil {
-		tracerConfigs = []*tracerConfig{config}
-
+	// config from environment variables
+	if demoConf, err = loadEnvVariables(); err == nil {
 		return
 	}
-	if tracerConfigs, err = loadConfigFile("./config.json"); err == nil {
+	// load default configuration from ./config.json
+	if demoConf, err = loadConfigFile("./config.json"); err == nil {
 		return
 	}
 	if err != nil {
-		log.Fatalln(err.Error())
+		fmt.Printf("load startup parameters failed: %s, using default patameters\n", err.Error())
 	}
+	demoConf = loadDefaultStartupParameters()
 }

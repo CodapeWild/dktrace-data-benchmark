@@ -37,7 +37,7 @@ func TestBuildTree(t *testing.T) {
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
-	tree := tasks.createTree()
+	tree := tasks.createTree(&ddtracerwrapper{})
 	jsonstr := nodePrinter(tree.root)
 	if !json.Valid([]byte(jsonstr)) {
 		log.Fatalln("invalid JSON string")

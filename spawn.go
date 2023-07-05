@@ -5,11 +5,15 @@ import (
 	"time"
 )
 
-func (n *node) spawn(ctx context.Context) {
+type ctxTracerKey struct{}
+
+type ctxNodeInfoKey struct{}
+
+func (n *node) spawn(ctx context.Context, tracer Tracer) {
 	start := time.Now().UnixNano()
 
-	ctx = context.WithValue(ctx, ctxNodeInfoKey{}, n)
-	span, ctx := globalTracer.StartSpan(ctx)
+	var span Span
+	span, ctx = tracer.StartSpan(context.WithValue(ctx, ctxNodeInfoKey{}, n))
 	defer func() {
 		if time.Now().UnixNano()-start < int64(30*time.Millisecond) {
 			time.Sleep(30 * time.Millisecond)
@@ -25,6 +29,6 @@ func (n *node) spawn(ctx context.Context) {
 	span.SetTag("message", n.message)
 
 	for _, c := range n.children {
-		c.spawn(ctx)
+		c.spawn(ctx, tracer)
 	}
 }

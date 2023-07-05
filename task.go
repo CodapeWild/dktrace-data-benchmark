@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 )
@@ -29,8 +30,8 @@ func (tk task) findOptionkByID(id int) (*option, bool) {
 	return nil, false
 }
 
-func (tk task) createTree() *tree {
-	if len(tk) == 0 {
+func (tk task) createTree(tracer Tracer) *tree {
+	if len(tk) == 0 || tracer == nil {
 		return nil
 	}
 
@@ -117,18 +118,43 @@ type node struct {
 }
 
 type tree struct {
-	root *node
+	root   *node
+	tracer Tracer
 }
 
-func traverse(n *node, p func(n *node) bool) {
-	if n == nil || p == nil {
+func (tr *tree) count() int {
+	var (
+		nodes = []*node{tr.root}
+		c     = 0
+	)
+	for i := 0; i < len(nodes); i++ {
+		c++
+		nodes = append(nodes, nodes[i].children...)
+	}
+
+	return c
+}
+
+func (tr *tree) spawn(agentAddress string) {
+	if tr.tracer == nil || tr.root == nil {
 		return
 	}
 
-	if p(n) {
-		return
-	}
-	for _, c := range n.children {
-		traverse(c, p)
-	}
+	tr.tracer.Start(agentAddress, tr.root.service)
+	defer tr.tracer.Stop()
+
+	tr.root.spawn(context.Background(), tr.tracer)
 }
+
+// func traverse(root *node, p func(n *node) bool) {
+// 	if root == nil || p == nil {
+// 		return
+// 	}
+
+// 	if p(root) {
+// 		return
+// 	}
+// 	for _, c := range root.children {
+// 		traverse(c, p)
+// 	}
+// }
