@@ -17,6 +17,8 @@ var (
 )
 
 func main() {
+	Execute()
+
 	if demoConf == nil || len(demoConf.Tracers) == 0 {
 		log.Println("trace-data-demo not configurated properly")
 
