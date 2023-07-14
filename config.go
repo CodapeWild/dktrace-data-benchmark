@@ -227,7 +227,7 @@ func init() {
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
-	log.Printf("demo config: %#v", *demoConf)
+	log.Printf("final merged demo config is: %#v", *demoConf)
 
 	if demoConf.DisableLog {
 		log.SetOutput(nil)
