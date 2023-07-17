@@ -31,6 +31,11 @@ var (
 	}
 )
 
+type ddtracereq struct {
+	headers http.Header
+	traces  pb.Traces
+}
+
 func NewDDAgent(ampf *DDAmplifier) *DDAgent {
 	if ampf == nil {
 		log.Fatalln("traces amplifier for ddtrace agent can not be nil")
@@ -58,6 +63,11 @@ func (dd *DDAgent) Start(addr string) {
 
 func handleTracesWrapper(version string, ampf *DDAmplifier) http.HandlerFunc {
 	return func(resp http.ResponseWriter, req *http.Request) {
+		log.Printf("received ddtrace headers:")
+		for k, v := range req.Header {
+			log.Printf("%s: %v", k, v)
+		}
+
 		tc := countTraces(req)
 		if tc == 0 {
 			resp.WriteHeader(http.StatusOK)
@@ -106,7 +116,8 @@ func handleTracesWrapper(version string, ampf *DDAmplifier) http.HandlerFunc {
 		}
 
 		log.Printf("%v", traces)
-		ampf.SendTraces(traces)
+
+		ampf.SendTraces(&ddtracereq{headers: req.Header, traces: traces})
 	}
 }
 
@@ -162,12 +173,12 @@ func countTraces(req *http.Request) int {
 }
 
 type DDAmplifier struct {
-	addr               string
+	colAddr            string
 	threads, repeat    int
 	expectedSpansCount int
 	receivedSpansCount int
 	traces             pb.Traces
-	tc                 chan pb.Traces
+	ddreq              chan *ddtracereq
 	closer             chan struct{}
 }
 
@@ -189,7 +200,7 @@ func (ddampf *DDAmplifier) StartThreads(ctx context.Context) {
 				}
 			case <-ddampf.closer:
 				log.Println("ddtrace amplifier closed")
-			case traces := <-ddampf.tc:
+			case traces := <-ddampf.ddreq:
 				ddampf.runThreads(traces)
 				log.Println("ddtrace amplifier finished sending traces")
 			}
@@ -197,13 +208,13 @@ func (ddampf *DDAmplifier) StartThreads(ctx context.Context) {
 	}()
 }
 
-func (ddampf *DDAmplifier) SendTraces(traces pb.Traces) {
-	ddampf.traces = append(ddampf.traces, traces...)
+func (ddampf *DDAmplifier) SendTraces(ddreq *ddtracereq) {
+	ddampf.traces = append(ddampf.traces, ddreq.traces...)
 	for i := range ddampf.traces {
 		ddampf.receivedSpansCount += len(ddampf.traces[i])
 	}
 	if ddampf.receivedSpansCount >= ddampf.expectedSpansCount {
-		ddampf.tc <- ddampf.traces
+		ddampf.ddreq <- &ddtracereq{headers: ddreq.headers, traces: ddampf.traces}
 	}
 }
 
@@ -216,19 +227,20 @@ func (ddampf *DDAmplifier) Close() {
 	}
 }
 
-func (ddampf *DDAmplifier) runThreads(traces pb.Traces) {
+func (ddampf *DDAmplifier) runThreads(ddreq *ddtracereq) {
 	clnt := http.Client{Transport: newSingleHostTransport()}
 	for i := 1; i <= ddampf.threads; i++ {
-		dupli := duplicateDDTraces(traces)
+		dupli := duplicateDDTraces(ddreq.traces)
 		go func(traces pb.Traces, i int) {
 			for j := 1; j <= ddampf.repeat; i++ {
 				if bts, err := traces.MarshalMsg(nil); err != nil {
 					log.Println(err.Error())
 				} else {
-					req, err := http.NewRequest(http.MethodPost, ddampf.addr, bytes.NewBuffer(bts))
+					req, err := http.NewRequest(http.MethodPost, ddampf.colAddr, bytes.NewBuffer(bts))
 					if err != nil {
 						log.Fatalln(err)
 					}
+					req.Header = ddreq.headers
 					resp, err := clnt.Do(req)
 					if err != nil {
 						log.Println(err.Error())
@@ -281,11 +293,11 @@ func changeIDs(traces pb.Traces) {
 
 func NewDDAmplifier(ip string, port int, path string, expectedSpansCount, threads, repeat int) *DDAmplifier {
 	return &DDAmplifier{
-		addr:               fmt.Sprintf("http://%s:%s%s", ip, port, path),
+		colAddr:            fmt.Sprintf("http://%s:%d%s", ip, port, path),
 		expectedSpansCount: expectedSpansCount,
 		threads:            threads,
 		repeat:             repeat,
-		tc:                 make(chan pb.Traces),
+		ddreq:              make(chan *ddtracereq),
 		closer:             make(chan struct{}),
 	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"os"
 )
 
@@ -32,6 +33,8 @@ func (tk task) findOptionkByID(id int) (*option, bool) {
 
 func (tk task) createTree(tracer Tracer) *tree {
 	if len(tk) == 0 || tracer == nil {
+		log.Printf("create tree with empty task or nil tracer")
+
 		return nil
 	}
 
@@ -43,7 +46,7 @@ func (tk task) createTree(tracer Tracer) *tree {
 		buildQue = append(buildQue, node.children...)
 	}
 
-	return &tree{root: root}
+	return &tree{root: root, tracer: tracer}
 }
 
 func (tk task) setNode(uncomplete *node) {
@@ -137,6 +140,8 @@ func (tr *tree) count() int {
 
 func (tr *tree) spawn(agentAddress string) {
 	if tr.tracer == nil || tr.root == nil {
+		log.Printf("got nil tracer: %v or nil span tree: %v", tr.tracer, tr.root)
+
 		return
 	}
 
