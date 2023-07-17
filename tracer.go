@@ -19,11 +19,11 @@ type Tracer interface {
 
 type ddtracerwrapper struct{}
 
-func (dd *ddtracerwrapper) Start(agentAddress, service string) {
+func (ddwrap *ddtracerwrapper) Start(agentAddress, service string) {
 	ddtracer.Start(ddtracer.WithAgentAddr(agentAddress), ddtracer.WithService(service), ddtracer.WithDebugMode(true), ddtracer.WithLogStartup(true))
 }
 
-func (dd *ddtracerwrapper) StartSpan(ctx context.Context) (Span, context.Context) {
+func (ddwrap *ddtracerwrapper) StartSpan(ctx context.Context) (Span, context.Context) {
 	n := ctx.Value(ctxNodeInfoKey{}).(*node)
 	operation := "unknow-operation"
 	if n != nil {
@@ -35,7 +35,7 @@ func (dd *ddtracerwrapper) StartSpan(ctx context.Context) (Span, context.Context
 	return &ddspanwrapper{Span: span}, ctx
 }
 
-func (dd *ddtracerwrapper) Stop() {
+func (ddwrap *ddtracerwrapper) Stop() {
 	ddtracer.Stop()
 }
 
@@ -43,10 +43,10 @@ type ddspanwrapper struct {
 	ddtracer.Span
 }
 
-func (dd *ddspanwrapper) SetTag(key string, value interface{}) {
-	dd.Span.SetTag(key, value)
+func (ddwrap *ddspanwrapper) SetTag(key string, value interface{}) {
+	ddwrap.Span.SetTag(key, value)
 }
 
-func (dd *ddspanwrapper) EndSpan() {
-	dd.Span.Finish()
+func (ddwrap *ddspanwrapper) EndSpan() {
+	ddwrap.Span.Finish()
 }

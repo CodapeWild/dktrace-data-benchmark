@@ -239,19 +239,4 @@ func buildBenchmarkConfig() (*benchConfig, error) {
 
 func init() {
 	loadEnvVariables()
-	Execute()
-
-	var err error
-	benchConf, err = buildBenchmarkConfig()
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-	benchConf.Print()
-
-	log.SetFlags(log.Lshortfile | log.LstdFlags)
-	log.SetOutput(os.Stdout)
-	if benchConf.DisableLog {
-		log.Println("log disabled")
-		log.SetOutput(nil)
-	}
 }

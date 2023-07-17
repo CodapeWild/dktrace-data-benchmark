@@ -171,57 +171,61 @@ type DDAmplifier struct {
 	closer             chan struct{}
 }
 
-func (ddamp *DDAmplifier) StartThreads(ctx context.Context) {
+func (ddampf *DDAmplifier) StartThreads(ctx context.Context) {
 	if err := ctx.Err(); err != nil {
 		log.Println(err.Error())
 
 		return
 	}
 
-	select {
-	case <-ctx.Done():
-		if err := ctx.Err(); err != nil {
-			log.Printf("error: %s", err.Error())
-		} else {
-			log.Println("ddtrace amplifier context done")
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				if err := ctx.Err(); err != nil {
+					log.Printf("error: %s", err.Error())
+				} else {
+					log.Println("ddtrace amplifier context done")
+				}
+			case <-ddampf.closer:
+				log.Println("ddtrace amplifier closed")
+			case traces := <-ddampf.tc:
+				ddampf.runThreads(traces)
+				log.Println("ddtrace amplifier finished sending traces")
+			}
 		}
-	case <-ddamp.closer:
-		log.Println("ddtrace amplifier closed")
-	case traces := <-ddamp.tc:
-		ddamp.runThreads(traces)
-		log.Println("ddtrace amplifier finished sending traces")
+	}()
+}
+
+func (ddampf *DDAmplifier) SendTraces(traces pb.Traces) {
+	ddampf.traces = append(ddampf.traces, traces...)
+	for i := range ddampf.traces {
+		ddampf.receivedSpansCount += len(ddampf.traces[i])
+	}
+	if ddampf.receivedSpansCount >= ddampf.expectedSpansCount {
+		ddampf.tc <- ddampf.traces
 	}
 }
 
-func (ddamp *DDAmplifier) SendTraces(traces pb.Traces) {
-	ddamp.traces = append(ddamp.traces, traces...)
-	for i := range ddamp.traces {
-		ddamp.receivedSpansCount += len(ddamp.traces[i])
-	}
-	if ddamp.receivedSpansCount >= ddamp.expectedSpansCount {
-		ddamp.tc <- ddamp.traces
-	}
-}
-
-func (ddamp *DDAmplifier) Close() {
+func (ddampf *DDAmplifier) Close() {
 	select {
-	case <-ddamp.closer:
+	case <-ddampf.closer:
 		return
 	default:
-		close(ddamp.closer)
+		close(ddampf.closer)
 	}
 }
 
-func (ddamp *DDAmplifier) runThreads(traces pb.Traces) {
+func (ddampf *DDAmplifier) runThreads(traces pb.Traces) {
 	clnt := http.Client{Transport: newSingleHostTransport()}
-	for i := 1; i <= ddamp.threads; i++ {
+	for i := 1; i <= ddampf.threads; i++ {
 		dupli := duplicateDDTraces(traces)
 		go func(traces pb.Traces, i int) {
-			for j := 1; j <= ddamp.repeat; i++ {
+			for j := 1; j <= ddampf.repeat; i++ {
 				if bts, err := traces.MarshalMsg(nil); err != nil {
 					log.Println(err.Error())
 				} else {
-					req, err := http.NewRequest(http.MethodPost, ddamp.addr, bytes.NewBuffer(bts))
+					req, err := http.NewRequest(http.MethodPost, ddampf.addr, bytes.NewBuffer(bts))
 					if err != nil {
 						log.Fatalln(err)
 					}

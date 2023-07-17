@@ -1,13 +1,29 @@
 package main
 
 import (
-	"context"
 	"log"
+	"os"
 
 	"github.com/CodapeWild/dktrace-data-benchmark/agent"
 )
 
 func main() {
+	Execute()
+
+	var err error
+	benchConf, err = buildBenchmarkConfig()
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+	benchConf.Print()
+
+	log.SetFlags(log.Lshortfile | log.LstdFlags)
+	log.SetOutput(os.Stdout)
+	if benchConf.DisableLog {
+		log.Println("log disabled")
+		log.SetOutput(nil)
+	}
+
 	if benchConf == nil || len(benchConf.Tracers) == 0 {
 		log.Println("dktrace-data-benchmark not configurated properly")
 
@@ -20,12 +36,11 @@ func main() {
 			log.Println(err.Error())
 			continue
 		}
-		var cancler context.CancelFunc
 		switch v.Tracer {
 		case dd:
 			tr := task.createTree(&ddtracerwrapper{})
 			agentAddress := agent.NewRandomPortWithLocalHost()
-			cancler = agent.BuildDDAgentForWork(agentAddress, v.CollectorIP, v.CollectorPort, v.CollectorPath, tr.count(), v.SendThreads, v.SendTimesPerThread)
+			_ = agent.BuildDDAgentForWork(agentAddress, v.CollectorIP, v.CollectorPort, v.CollectorPath, tr.count(), v.SendThreads, v.SendTimesPerThread)
 			tr.spawn(agentAddress)
 		case jg:
 		case otel:
@@ -35,8 +50,7 @@ func main() {
 		default:
 			log.Printf("unrecognized tracer %s\n", v.Tracer)
 		}
-		if cancler != nil {
-			cancler()
-		}
 	}
+
+	select {}
 }
