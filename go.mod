@@ -1,4 +1,4 @@
-module github.com/CodapeWild/trace-data-demo
+module github.com/CodapeWild/dktrace-data-benchmark
 
 go 1.18
 

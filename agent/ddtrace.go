@@ -31,14 +31,14 @@ var (
 	}
 )
 
-func NewDDAgent(amp *DDAmplifier) *DDAgent {
-	if amp == nil {
+func NewDDAgent(ampf *DDAmplifier) *DDAgent {
+	if ampf == nil {
 		log.Fatalln("traces amplifier for ddtrace agent can not be nil")
 	}
 
 	dd := &DDAgent{}
 	for pattern, version := range PatternVersion {
-		dd.HandleFunc(pattern, handleTracesWrapper(version, amp))
+		dd.HandleFunc(pattern, handleTracesWrapper(version, ampf))
 	}
 
 	return dd
@@ -56,11 +56,11 @@ func (dd *DDAgent) Start(addr string) {
 	}()
 }
 
-func handleTracesWrapper(version string, amp *DDAmplifier) http.HandlerFunc {
+func handleTracesWrapper(version string, ampf *DDAmplifier) http.HandlerFunc {
 	return func(resp http.ResponseWriter, req *http.Request) {
 		tc := countTraces(req)
 		if tc == 0 {
-			resp.WriteHeader(http.StatusBadRequest)
+			resp.WriteHeader(http.StatusOK)
 
 			return
 		}
@@ -106,7 +106,7 @@ func handleTracesWrapper(version string, amp *DDAmplifier) http.HandlerFunc {
 		}
 
 		log.Printf("%v", traces)
-		amp.PutTraces(traces)
+		ampf.SendTraces(traces)
 	}
 }
 
@@ -161,17 +161,6 @@ func countTraces(req *http.Request) int {
 	}
 }
 
-func NewDDAmplifier(ip string, port int, path string, expectedSpansCount, threads, repeat int) *DDAmplifier {
-	return &DDAmplifier{
-		addr:               fmt.Sprintf("http://%s:%s%s", ip, port, path),
-		expectedSpansCount: expectedSpansCount,
-		threads:            threads,
-		repeat:             repeat,
-		tc:                 make(chan pb.Traces),
-		closer:             make(chan struct{}),
-	}
-}
-
 type DDAmplifier struct {
 	addr               string
 	threads, repeat    int
@@ -204,7 +193,7 @@ func (ddamp *DDAmplifier) StartThreads(ctx context.Context) {
 	}
 }
 
-func (ddamp *DDAmplifier) PutTraces(traces pb.Traces) {
+func (ddamp *DDAmplifier) SendTraces(traces pb.Traces) {
 	ddamp.traces = append(ddamp.traces, traces...)
 	for i := range ddamp.traces {
 		ddamp.receivedSpansCount += len(ddamp.traces[i])
@@ -286,13 +275,24 @@ func changeIDs(traces pb.Traces) {
 	}
 }
 
+func NewDDAmplifier(ip string, port int, path string, expectedSpansCount, threads, repeat int) *DDAmplifier {
+	return &DDAmplifier{
+		addr:               fmt.Sprintf("http://%s:%s%s", ip, port, path),
+		expectedSpansCount: expectedSpansCount,
+		threads:            threads,
+		repeat:             repeat,
+		tc:                 make(chan pb.Traces),
+		closer:             make(chan struct{}),
+	}
+}
+
 func BuildDDAgentForWork(agentAddress string, endpointIP string, endpointPort int, endpointPath string, expectedSpansCount, threads, repeat int) context.CancelFunc {
 	ctx, canceler := context.WithCancel(context.TODO())
 
-	amp := NewDDAmplifier(endpointIP, endpointPort, endpointPath, expectedSpansCount, threads, repeat)
-	amp.StartThreads(ctx)
+	ampf := NewDDAmplifier(endpointIP, endpointPort, endpointPath, expectedSpansCount, threads, repeat)
+	ampf.StartThreads(ctx)
 
-	agent := NewDDAgent(amp)
+	agent := NewDDAgent(ampf)
 	agent.Start(agentAddress)
 
 	return canceler

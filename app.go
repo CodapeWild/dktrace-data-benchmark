@@ -4,28 +4,17 @@ import (
 	"context"
 	"log"
 
-	"github.com/CodapeWild/trace-data-demo/agent"
-)
-
-var (
-	ddtrace       = "ddtrace"
-	jaeger        = "jaeger"
-	opentelemetry = "open-telemetry"
-	pinpoint      = "pinpoint"
-	skywalking    = "sky-walking"
-	zipkin        = "zipkin"
+	"github.com/CodapeWild/dktrace-data-benchmark/agent"
 )
 
 func main() {
-	Execute()
-
-	if demoConf == nil || len(demoConf.Tracers) == 0 {
-		log.Println("trace-data-demo not configurated properly")
+	if benchConf == nil || len(benchConf.Tracers) == 0 {
+		log.Println("dktrace-data-benchmark not configurated properly")
 
 		return
 	}
 
-	for _, v := range demoConf.Tracers {
+	for _, v := range benchConf.Tracers {
 		task, err := newTaskFromJSONFile(v.TaskConfig)
 		if err != nil {
 			log.Println(err.Error())
@@ -33,16 +22,16 @@ func main() {
 		}
 		var cancler context.CancelFunc
 		switch v.Tracer {
-		case ddtrace:
+		case dd:
 			tr := task.createTree(&ddtracerwrapper{})
 			agentAddress := agent.NewRandomPortWithLocalHost()
 			cancler = agent.BuildDDAgentForWork(agentAddress, v.CollectorIP, v.CollectorPort, v.CollectorPath, tr.count(), v.SendThreads, v.SendTimesPerThread)
 			tr.spawn(agentAddress)
-		case jaeger:
-		case opentelemetry:
-		case pinpoint:
-		case skywalking:
-		case zipkin:
+		case jg:
+		case otel:
+		case pp:
+		case sky:
+		case zpk:
 		default:
 			log.Printf("unrecognized tracer %s\n", v.Tracer)
 		}

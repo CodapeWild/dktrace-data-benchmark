@@ -8,22 +8,20 @@ import (
 	"strings"
 )
 
-type tracerName string
-
 const (
-	dd   tracerName = "ddtrace"
-	jg   tracerName = "jaeger"
-	otel tracerName = "open-telemetry"
-	pp   tracerName = "pinpoint"
-	sky  tracerName = "skywalking"
-	zp   tracerName = "zipkin"
+	dd   string = "ddtrace"
+	jg   string = "jaeger"
+	otel string = "open-telemetry"
+	pp   string = "pinpoint"
+	sky  string = "skywalking"
+	zpk  string = "zipkin"
 )
 
 type tracerConfigOption func(tconfig *tracerConfig)
 
-func tracerWithName(name tracerName) tracerConfigOption {
+func tracerWithName(name string) tracerConfigOption {
 	return func(tconfig *tracerConfig) {
-		tconfig.Tracer = string(name)
+		tconfig.Tracer = name
 	}
 }
 
@@ -77,16 +75,16 @@ func NewTracerConfig(opts ...tracerConfigOption) *tracerConfig {
 	return tconfig
 }
 
-type demoConfigOption func(dconfig *demoConfig)
+type benchConfigOption func(dconfig *benchConfig)
 
-func demoWithLog(enable bool) demoConfigOption {
-	return func(dconfig *demoConfig) {
+func benchWithLog(enable bool) benchConfigOption {
+	return func(dconfig *benchConfig) {
 		dconfig.DisableLog = enable
 	}
 }
 
-func demoWithTracers(tconfigs ...*tracerConfig) demoConfigOption {
-	return func(dconfig *demoConfig) {
+func benchWithTracers(tconfigs ...*tracerConfig) benchConfigOption {
+	return func(dconfig *benchConfig) {
 		for i := range tconfigs {
 			found := false
 			for j := 0; j < len(dconfig.Tracers); j++ {
@@ -103,21 +101,42 @@ func demoWithTracers(tconfigs ...*tracerConfig) demoConfigOption {
 	}
 }
 
-type demoConfig struct {
+type benchConfig struct {
 	DisableLog bool            `json:"disable_log"`
 	Tracers    []*tracerConfig `json:"tracers"`
 }
 
-func (dconfig *demoConfig) With(opts ...demoConfigOption) *demoConfig {
+func (bconfig *benchConfig) With(opts ...benchConfigOption) *benchConfig {
 	for _, opt := range opts {
-		opt(dconfig)
+		opt(bconfig)
 	}
 
-	return dconfig
+	return bconfig
 }
 
-func NewDemoConfig(opts ...demoConfigOption) *demoConfig {
-	dconfig := &demoConfig{}
+func (bconfig *benchConfig) Print() {
+	log.Println("benchmark config:")
+	log.Println("##################")
+	if bconfig.DisableLog {
+		log.Println("log: disabled")
+	} else {
+		log.Println("log: enabled")
+	}
+	for _, tconf := range bconfig.Tracers {
+		log.Println("------")
+		log.Printf("tracer: %s", tconf.Tracer)
+		log.Printf("task config: %s", tconf.TaskConfig)
+		log.Printf("send threads: %d", tconf.SendThreads)
+		log.Printf("send times per thread: %d", tconf.SendTimesPerThread)
+		log.Printf("collector proto: %s", tconf.CollectorProto)
+		log.Printf("collector ip: %s", tconf.CollectorIP)
+		log.Printf("collector port: %d", tconf.CollectorPort)
+		log.Printf("collector path: %s", tconf.CollectorPath)
+	}
+}
+
+func NewBenchmarkConfig(opts ...benchConfigOption) *benchConfig {
+	dconfig := &benchConfig{}
 	for _, opt := range opts {
 		opt(dconfig)
 	}
@@ -126,18 +145,18 @@ func NewDemoConfig(opts ...demoConfigOption) *demoConfig {
 }
 
 var (
-	tracers = map[tracerName]bool{
+	tracers = map[string]bool{
 		dd:   true,
 		jg:   true,
 		otel: true,
 		pp:   true,
 		sky:  true,
-		zp:   true,
+		zpk:  true,
 	}
 	envs = []string{"DKTRACE_CONFIG", "DKTRACE_DISABLE_LOG",
 		"DKTRACE_TRACER", "DKTRACE_TASK_CONFIG", "DKTRACE_THREADS", "DKTRACE_SEND_TIMES_PER_THREAD",
 		"DKTRACE_COLLECTOR_PROTO", "DKTRACE_COLLECTOR_IP", "DKTRACE_COLLECTOR_PORT", "DKTRACE_COLLECTOR_PATH"}
-	demoConf *demoConfig
+	benchConf *benchConfig
 )
 
 // default configurations
@@ -168,7 +187,7 @@ func loadEnvVariables() {
 				disableLog = true
 			}
 		case "DKTRACE_TRACER":
-			tracer = tracerName(v)
+			tracer = v
 		case "DKTRACE_TASK_CONFIG":
 			taskConfig = v
 		case "DKTRACE_THREADS":
@@ -193,26 +212,26 @@ func loadEnvVariables() {
 	}
 }
 
-func loadConfigFile(path string) (*demoConfig, error) {
+func loadConfigFile(path string) (*benchConfig, error) {
 	bts, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	var demoConf demoConfig
-	if err = json.Unmarshal(bts, &demoConf); err != nil {
+	var benchConf benchConfig
+	if err = json.Unmarshal(bts, &benchConf); err != nil {
 		return nil, err
 	}
 
-	return &demoConf, nil
+	return &benchConf, nil
 }
 
-func buildDemoConfig() (*demoConfig, error) {
+func buildBenchmarkConfig() (*benchConfig, error) {
 	if configFilePath != "" {
 		return loadConfigFile(configFilePath)
 	} else {
-		return NewDemoConfig(demoWithLog(disableLog),
-			demoWithTracers(NewTracerConfig(tracerWithName(tracer), tracerWithTask(taskConfig),
+		return NewBenchmarkConfig(benchWithLog(disableLog),
+			benchWithTracers(NewTracerConfig(tracerWithName(tracer), tracerWithTask(taskConfig),
 				tracerWithAmplifier(sendThreads, sendTimesPerThread),
 				tracerWithCollector(collectorProto, collectorIP, collectorPort, collectorPath)))), nil
 	}
@@ -223,16 +242,16 @@ func init() {
 	Execute()
 
 	var err error
-	demoConf, err = buildDemoConfig()
+	benchConf, err = buildBenchmarkConfig()
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
-	log.Printf("final merged demo config is: %#v", *demoConf)
+	benchConf.Print()
 
-	if demoConf.DisableLog {
+	log.SetFlags(log.Lshortfile | log.LstdFlags)
+	log.SetOutput(os.Stdout)
+	if benchConf.DisableLog {
+		log.Println("log disabled")
 		log.SetOutput(nil)
-	} else {
-		log.SetFlags(log.Lshortfile | log.LstdFlags)
-		log.SetOutput(os.Stdout)
 	}
 }

@@ -64,7 +64,7 @@ var tracerCmd = &cobra.Command{
 	Short: "single trace configuration command",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("tracer called")
-		tracer = tracerName(cmd.Flag("name").Value.String())
+		tracer = cmd.Flag("name").Value.String()
 		taskConfig = cmd.Flag("tasks").Value.String()
 		if ts, err := strconv.Atoi(cmd.Flag("threads").Value.String()); err == nil {
 			sendThreads = ts

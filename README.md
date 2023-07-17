@@ -1,18 +1,18 @@
-# trace-data-demo
+# dktrace-data-benchmark
 
 ## how to
 
-start a demo and send trace data to collector
+start a benchmark and send trace data to collector
 
 - with application startup parameters
 
-> start demo with config file
+> start benchmark with config file
 
 ```shell
 ./tdd -config ./config.json
 ```
 
-> start demo with startup parameters
+> start benchmark with startup parameters
 
 ```shell
 ./tdd -tracer [ddtrace | jeager | otel | pinpoint | skywalking | zipkin]
@@ -38,7 +38,7 @@ export TDD_COLLECTOR_PORT=9529
 export TDD_COLLECTOR_PATH=/v0.4/traces
 ```
 
-> start demo configuration priority will be
+> start benchmark configuration priority will be
 
 - start up with `-config` parameter
 - start up with other parameters but except `-config` parameter
