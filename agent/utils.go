@@ -1,32 +1,14 @@
 package agent
 
 import (
-	"bytes"
-	"context"
 	"fmt"
 	"log"
 	"math/rand"
 	"mime"
 	"net"
 	"net/http"
-	"sync"
 	"time"
 )
-
-type Amplifier interface {
-	StartThreads(ctx context.Context)
-	Close()
-}
-
-var bufpool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
-
-func getBuffer() *bytes.Buffer {
-	return bufpool.Get().(*bytes.Buffer)
-}
-
-func putBuffer(buf *bytes.Buffer) {
-	bufpool.Put(buf)
-}
 
 func getMetaType(req *http.Request, def string) string {
 	mt, _, err := mime.ParseMediaType(req.Header.Get("Content-Type"))

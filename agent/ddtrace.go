@@ -1,3 +1,20 @@
+/*
+ *   Copyright (c) 2023 CodapeWild
+ *   All rights reserved.
+
+ *   Licensed under the Apache License, Version 2.0 (the "License");
+ *   you may not use this file except in compliance with the License.
+ *   You may obtain a copy of the License at
+
+ *   http://www.apache.org/licenses/LICENSE-2.0
+
+ *   Unless required by applicable law or agreed to in writing, software
+ *   distributed under the License is distributed on an "AS IS" BASIS,
+ *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *   See the License for the specific language governing permissions and
+ *   limitations under the License.
+ */
+
 package agent
 
 import (
@@ -11,6 +28,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/CodapeWild/devkit/bufpool"
+	"github.com/CodapeWild/devkit/comerr"
 	"github.com/DataDog/datadog-agent/pkg/trace/pb"
 )
 
@@ -31,9 +50,21 @@ var (
 	}
 )
 
-type ddtracereq struct {
+type ddReqWrapper struct {
 	headers http.Header
 	traces  pb.Traces
+}
+
+type DDAgent struct {
+	http.ServeMux
+}
+
+func (dd *DDAgent) Start(addr string) {
+	go func() {
+		if err := http.ListenAndServe(addr, dd); err != nil {
+			log.Fatalln(err.Error())
+		}
+	}()
 }
 
 func NewDDAgent(ampf *DDAmplifier) *DDAgent {
@@ -47,18 +78,6 @@ func NewDDAgent(ampf *DDAmplifier) *DDAgent {
 	}
 
 	return dd
-}
-
-type DDAgent struct {
-	http.ServeMux
-}
-
-func (dd *DDAgent) Start(addr string) {
-	go func() {
-		if err := http.ListenAndServe(addr, dd); err != nil {
-			log.Fatalln(err.Error())
-		}
-	}()
 }
 
 func handleTracesWrapper(version string, ampf *DDAmplifier) http.HandlerFunc {
@@ -88,19 +107,17 @@ func handleTracesWrapper(version string, ampf *DDAmplifier) http.HandlerFunc {
 		case V02, V03, V04:
 			traces, err = decodeRequest(req)
 		case V05:
-			buf := getBuffer()
-			defer putBuffer(buf)
-
-			if _, err = io.Copy(buf, req.Body); err == nil {
-				err = traces.UnmarshalMsgDictionary(buf.Bytes())
-			}
+			bufpool.MakeUseOfBuffer(func(buf *bytes.Buffer) {
+				if _, err = io.Copy(buf, req.Body); err == nil {
+					err = traces.UnmarshalMsgDictionary(buf.Bytes())
+				}
+			})
 		case V07:
-			buf := getBuffer()
-			defer putBuffer(buf)
-
-			if _, err = io.Copy(buf, req.Body); err == nil {
-				_, err = traces.UnmarshalMsg(buf.Bytes())
-			}
+			bufpool.MakeUseOfBuffer(func(buf *bytes.Buffer) {
+				if _, err = io.Copy(buf, req.Body); err == nil {
+					_, err = traces.UnmarshalMsg(buf.Bytes())
+				}
+			})
 		}
 
 		// reply ok or error based on parameter err
@@ -117,7 +134,7 @@ func handleTracesWrapper(version string, ampf *DDAmplifier) http.HandlerFunc {
 
 		log.Printf("%v", traces)
 
-		ampf.SendTraces(&ddtracereq{headers: req.Header, traces: traces})
+		ampf.SendData(&ddReqWrapper{headers: req.Header, traces: traces})
 	}
 }
 
@@ -137,27 +154,24 @@ func reply(version string, resp http.ResponseWriter, err error) {
 }
 
 func decodeRequest(req *http.Request) (pb.Traces, error) {
-	var traces pb.Traces
+	var (
+		traces pb.Traces
+		err    error
+	)
 	switch mt := getMetaType(req, "application/json"); mt {
 	case "application/msgpack":
-		buf := getBuffer()
-		defer putBuffer(buf)
-
-		if _, err := io.Copy(buf, req.Body); err != nil {
-			return nil, err
-		}
-		if _, err := traces.UnmarshalMsg(buf.Bytes()); err != nil {
-			return nil, err
-		}
+		bufpool.MakeUseOfBuffer(func(buf *bytes.Buffer) {
+			if _, err = io.Copy(buf, req.Body); err == nil {
+				_, err = traces.UnmarshalMsg(buf.Bytes())
+			}
+		})
 	case "application/json", "test/json", "":
-		if err := json.NewDecoder(req.Body).Decode(&traces); err != nil {
-			return nil, err
-		}
+		err = json.NewDecoder(req.Body).Decode(&traces)
 	default:
-		return nil, fmt.Errorf("unrecognized media type: %s", mt)
+		err = fmt.Errorf("unrecognized media type: %s", mt)
 	}
 
-	return traces, nil
+	return traces, err
 }
 
 func countTraces(req *http.Request) int {
@@ -178,15 +192,30 @@ type DDAmplifier struct {
 	expectedSpansCount int
 	receivedSpansCount int
 	traces             pb.Traces
-	ddreq              chan *ddtracereq
+	ddReqChan          chan *ddReqWrapper
 	closer             chan struct{}
 }
 
-func (ddampf *DDAmplifier) StartThreads(ctx context.Context) {
-	if err := ctx.Err(); err != nil {
-		log.Println(err.Error())
+func (ddampf *DDAmplifier) SendData(value any) error {
+	ddreq, ok := value.(*ddReqWrapper)
+	if !ok {
+		return comerr.ErrAssertFailed
+	}
 
-		return
+	ddampf.traces = append(ddampf.traces, ddreq.traces...)
+	for _, trace := range ddreq.traces {
+		ddampf.receivedSpansCount += len(trace)
+	}
+	if ddampf.receivedSpansCount >= ddampf.expectedSpansCount {
+		ddampf.ddReqChan <- ddreq
+	}
+
+	return nil
+}
+
+func (ddampf *DDAmplifier) StartThreads(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	go func() {
@@ -200,22 +229,14 @@ func (ddampf *DDAmplifier) StartThreads(ctx context.Context) {
 				}
 			case <-ddampf.closer:
 				log.Println("ddtrace amplifier closed")
-			case traces := <-ddampf.ddreq:
+			case traces := <-ddampf.ddReqChan:
 				ddampf.runThreads(traces)
 				log.Println("ddtrace amplifier finished sending traces")
 			}
 		}
 	}()
-}
 
-func (ddampf *DDAmplifier) SendTraces(ddreq *ddtracereq) {
-	ddampf.traces = append(ddampf.traces, ddreq.traces...)
-	for i := range ddampf.traces {
-		ddampf.receivedSpansCount += len(ddampf.traces[i])
-	}
-	if ddampf.receivedSpansCount >= ddampf.expectedSpansCount {
-		ddampf.ddreq <- &ddtracereq{headers: ddreq.headers, traces: ddampf.traces}
-	}
+	return nil
 }
 
 func (ddampf *DDAmplifier) Close() {
@@ -227,7 +248,7 @@ func (ddampf *DDAmplifier) Close() {
 	}
 }
 
-func (ddampf *DDAmplifier) runThreads(ddreq *ddtracereq) {
+func (ddampf *DDAmplifier) runThreads(ddreq *ddReqWrapper) {
 	clnt := http.Client{Transport: newSingleHostTransport()}
 	for i := 1; i <= ddampf.threads; i++ {
 		dupli := duplicateDDTraces(ddreq.traces)
@@ -256,17 +277,15 @@ func (ddampf *DDAmplifier) runThreads(ddreq *ddtracereq) {
 }
 
 func duplicateDDTraces(traces pb.Traces) pb.Traces {
-	buf := getBuffer()
-	defer putBuffer(buf)
-
-	if err := json.NewEncoder(buf).Encode(traces); err != nil {
-		log.Fatalln(err.Error())
-	}
-
 	var dupli *pb.Traces = &pb.Traces{}
-	if err := json.NewDecoder(buf).Decode(dupli); err != nil {
-		log.Fatalln(err.Error())
-	}
+	bufpool.MakeUseOfBuffer(func(buf *bytes.Buffer) {
+		if err := json.NewEncoder(buf).Encode(traces); err != nil {
+			log.Fatalln(err.Error())
+		}
+		if err := json.NewDecoder(buf).Decode(dupli); err != nil {
+			log.Fatalln(err.Error())
+		}
+	})
 
 	return *dupli
 }
@@ -297,7 +316,7 @@ func NewDDAmplifier(ip string, port int, path string, expectedSpansCount, thread
 		expectedSpansCount: expectedSpansCount,
 		threads:            threads,
 		repeat:             repeat,
-		ddreq:              make(chan *ddtracereq),
+		ddReqChan:          make(chan *ddReqWrapper),
 		closer:             make(chan struct{}),
 	}
 }
