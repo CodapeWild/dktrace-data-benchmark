@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 
@@ -36,12 +37,14 @@ func main() {
 			log.Println(err.Error())
 			continue
 		}
+
+		var (
+			canceler context.CancelFunc
+			finish   chan struct{}
+		)
 		switch v.Tracer {
 		case dd:
-			tr := task.createTree(&ddtracerwrapper{})
-			agentAddress := agent.NewRandomPortWithLocalHost()
-			_ = agent.BuildDDAgentForWork(agentAddress, v.CollectorIP, v.CollectorPort, v.CollectorPath, tr.count(), v.SendThreads, v.SendTimesPerThread)
-			tr.spawn(agentAddress)
+			canceler, finish, err = benchDDTraceCollector(v, task)
 		case jg:
 		case otel:
 		case pp:
@@ -50,7 +53,21 @@ func main() {
 		default:
 			log.Printf("unrecognized tracer %s\n", v.Tracer)
 		}
+		if err != nil {
+			canceler()
+			log.Println(err.Error())
+			continue
+		}
+		<-finish
+		log.Println("### finished")
 	}
+}
 
-	select {}
+func benchDDTraceCollector(tconf *tracerConfig, task task) (canceler context.CancelFunc, finish chan struct{}, err error) {
+	tr := task.createTree(&ddtracerwrapper{})
+	agentAddress := agent.NewRandomPortWithLocalHost()
+	canceler, finish, err = agent.BuildDDAgentForWork(agentAddress, tconf.CollectorIP, tconf.CollectorPort, tconf.CollectorPath, tr.count(), tconf.SendThreads, tconf.SendTimesPerThread)
+	tr.spawn(context.TODO(), agentAddress)
+
+	return
 }

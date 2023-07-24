@@ -4,8 +4,8 @@
     {
       "tracer": "ddtrace",
       "task_config": "./tasks/user-login.json",
-      "send_threads": 10,
-      "send_times_per_thread": 100,
+      "send_threads": 2,
+      "send_times_per_thread": 10,
       "collector_proto": "http",
       "collector_ip": "127.0.0.1",
       "collector_port": 9529,
@@ -14,8 +14,8 @@
     {
       "tracer": "ddtrace",
       "task_config": "./tasks/user-login.json",
-      "send_threads": 10,
-      "send_times_per_thread": 100,
+      "send_threads": 2,
+      "send_times_per_thread": 10,
       "collector_proto": "http",
       "collector_ip": "127.0.0.1",
       "collector_port": 9529,

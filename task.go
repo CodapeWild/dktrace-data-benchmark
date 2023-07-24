@@ -138,7 +138,7 @@ func (tr *tree) count() int {
 	return c
 }
 
-func (tr *tree) spawn(agentAddress string) {
+func (tr *tree) spawn(ctx context.Context, agentAddress string) {
 	if tr.tracer == nil || tr.root == nil {
 		log.Printf("got nil tracer: %v or nil span tree: %v", tr.tracer, tr.root)
 
@@ -148,7 +148,7 @@ func (tr *tree) spawn(agentAddress string) {
 	tr.tracer.Start(agentAddress, tr.root.service)
 	defer tr.tracer.Stop()
 
-	tr.root.spawn(context.Background(), tr.tracer)
+	tr.root.spawn(ctx, tr.tracer)
 }
 
 // func traverse(root *node, p func(n *node) bool) {
