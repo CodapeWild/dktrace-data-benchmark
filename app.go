@@ -58,8 +58,9 @@ func main() {
 			log.Println(err.Error())
 			continue
 		}
-		<-finish
-		log.Println("### finished")
+		if finish != nil {
+			<-finish
+		}
 	}
 }
 
