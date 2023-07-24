@@ -4,7 +4,7 @@
     {
       "tracer": "ddtrace",
       "task_config": "./tasks/user-login.json",
-      "send_threads": 2,
+      "send_threads": 3,
       "send_times_per_thread": 10,
       "collector_proto": "http",
       "collector_ip": "127.0.0.1",
@@ -14,7 +14,7 @@
     {
       "tracer": "ddtrace",
       "task_config": "./tasks/user-login.json",
-      "send_threads": 2,
+      "send_threads": 3,
       "send_times_per_thread": 10,
       "collector_proto": "http",
       "collector_ip": "127.0.0.1",
@@ -24,8 +24,8 @@
     {
       "tracer": "jaeger",
       "task_config": "./tasks/user-login.json",
-      "send_threads": 10,
-      "send_times_per_thread": 100,
+      "send_threads": 3,
+      "send_times_per_thread": 10,
       "collector_proto": "udp",
       "collector_ip": "127.0.0.1",
       "collector_port": 6831
@@ -33,8 +33,8 @@
     {
       "tracer": "jaeger",
       "task_config": "./tasks/user-login.json",
-      "send_threads": 10,
-      "send_times_per_thread": 100,
+      "send_threads": 3,
+      "send_times_per_thread": 10,
       "collector_proto": "http",
       "collector_ip": "127.0.0.1",
       "collector_port": 9529,
@@ -43,8 +43,8 @@
     {
       "tracer": "open-telemetry",
       "task_config": "./tasks/user-login.json",
-      "send_threads": 10,
-      "send_times_per_thread": 100,
+      "send_threads": 3,
+      "send_times_per_thread": 10,
       "collector_proto": "http",
       "collector_ip": "127.0.0.1",
       "collector_port": 9529,
@@ -53,8 +53,8 @@
     {
       "tracer": "open-telemetry",
       "task_config": "./tasks/user-login.json",
-      "send_threads": 10,
-      "send_times_per_thread": 100,
+      "send_threads": 3,
+      "send_times_per_thread": 10,
       "collector_proto": "grpc",
       "collector_ip": "127.0.0.1",
       "collector_port": 4317
@@ -62,8 +62,8 @@
     {
       "tracer": "pinpoint",
       "task_config": "./tasks/user-login.json",
-      "send_threads": 10,
-      "send_times_per_thread": 100,
+      "send_threads": 3,
+      "send_times_per_thread": 10,
       "collector_proto": "grpc",
       "collector_ip": "127.0.0.1",
       "collector_port": 9991
@@ -71,8 +71,8 @@
     {
       "tracer": "skywalking",
       "task_config": "./tasks/user-login.json",
-      "send_threads": 10,
-      "send_times_per_thread": 100,
+      "send_threads": 3,
+      "send_times_per_thread": 10,
       "collector_proto": "http",
       "collector_ip": "127.0.0.1",
       "collector_port": 9529,
@@ -81,8 +81,8 @@
     {
       "tracer": "skywalking",
       "task_config": "./tasks/user-login.json",
-      "send_threads": 10,
-      "send_times_per_thread": 100,
+      "send_threads": 3,
+      "send_times_per_thread": 10,
       "collector_proto": "grpc",
       "collector_ip": "127.0.0.1",
       "collector_port": 11800
@@ -90,8 +90,8 @@
     {
       "tracer": "zipkin",
       "task_config": "./tasks/user-login.json",
-      "send_threads": 10,
-      "send_times_per_thread": 100,
+      "send_threads": 3,
+      "send_times_per_thread": 10,
       "collector_proto": "http",
       "collector_ip": "127.0.0.1",
       "collector_port": 9529,
@@ -100,8 +100,8 @@
     {
       "tracer": "zipkin",
       "task_config": "./tasks/user-login.json",
-      "send_threads": 10,
-      "send_times_per_thread": 100,
+      "send_threads": 3,
+      "send_times_per_thread": 10,
       "collector_proto": "http",
       "collector_ip": "127.0.0.1",
       "collector_port": 9529,
