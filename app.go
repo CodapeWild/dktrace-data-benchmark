@@ -45,16 +45,16 @@ func main() {
 }
 
 var (
-	taskChan = make(chan *taskConfig, 100)
-	gcloser  = make(chan struct{})
+	gTaskChan = make(chan *taskConfig, 20)
+	gCloser   = make(chan struct{})
 )
 
 func runTaskThread() {
 	for {
 		select {
-		case <-gcloser:
+		case <-gCloser:
 			return
-		case task := <-taskChan:
+		case task := <-gTaskChan:
 			var (
 				canceler context.CancelFunc
 				finish   chan struct{}

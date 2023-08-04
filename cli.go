@@ -65,16 +65,16 @@ var disableLogCmd = &cobra.Command{
 // tasksCmd represents the tracer command
 var tasksCmd = &cobra.Command{
 	Use:   "tasks",
-	Short: "tasks configuration command, the input arguments are taskConfig objects in JSON string format",
+	Short: "tasks configuration command, JSON object string required, multiple arguments supported",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("tracer called")
+		fmt.Println("tasks called")
 
 		for _, arg := range args {
 			task := &taskConfig{}
 			if err := json.Unmarshal([]byte(arg), task); err != nil {
 				log.Println(err.Error())
 			} else {
-				gtasks = append(gtasks, task)
+				gTasks = append(gTasks, task)
 			}
 		}
 	},
@@ -82,21 +82,47 @@ var tasksCmd = &cobra.Command{
 
 // runCmd represents the run command
 var runCmd = &cobra.Command{
-	Use:   "run",
-	Short: "run a task by name",
+	Use: "run",
+	Short: `run task by name, task name required, multiple arguments supported but normally do not input more
+	than 10 tasks at once which will take too long to complete`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("run called")
 
+		for _, arg := range args {
+			found := false
+			for _, task := range gTasks {
+				if task.Name == arg {
+					gTaskChan <- task
+					found = true
+				}
+			}
+			if !found {
+				log.Printf("task: %s not found", arg)
+			}
+		}
 	},
 }
 
 // showCmd represents the show command
 var showCmd = &cobra.Command{
 	Use:   "show",
-	Short: "show all the saved tasks configuration",
+	Short: "show all the saved tasks configuration if no task name offered, otherwise show as arguments provided",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("show called")
 
+		if len(args) == 0 {
+			for _, task := range gTasks {
+				task.Print()
+			}
+		} else {
+			for _, arg := range args {
+				for _, task := range gTasks {
+					if task.Name == arg {
+						task.Print()
+					}
+				}
+			}
+		}
 	},
 }
 

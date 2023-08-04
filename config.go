@@ -187,7 +187,7 @@ var (
 	}
 	envs      = []string{"DKTRACE_CONFIG", "DKTRACE_DISABLE_LOG", "DKTRACE_TASKS"}
 	benchConf *benchConfig
-	gtasks    []*taskConfig
+	gTasks    []*taskConfig
 )
 
 // default configurations
@@ -227,7 +227,7 @@ func loadEnvVariables() {
 				log.Println(err.Error())
 			} else {
 				for _, task := range *tasks {
-					gtasks = append(gtasks, task)
+					gTasks = append(gTasks, task)
 				}
 			}
 		}
