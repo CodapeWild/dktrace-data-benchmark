@@ -18,7 +18,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 
@@ -28,18 +30,19 @@ import (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:     "dktrace-data-benchmark",
-	Aliases: []string{"dktrace"},
+	Aliases: []string{"dkbench"},
 	Short:   "benchmark widget written for Datakit trace test",
 }
 
 // configCmd represents the config command
 var configCmd = &cobra.Command{
 	Use:   "config",
-	Short: "tracers config JSON file path",
+	Short: "benchmark configuration file path in JSON format",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("config called")
+
 		if len(args) != 0 {
-			configFilePath = args[0]
+			defBenchConf = args[0]
 		}
 	},
 }
@@ -47,37 +50,53 @@ var configCmd = &cobra.Command{
 // disableLogCmd represents the disableLog command
 var disableLogCmd = &cobra.Command{
 	Use:   "disable-log",
-	Short: "disable log",
+	Short: "disable log output",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("disableLog called")
+
 		if len(args) != 0 {
 			if ok, err := strconv.ParseBool(args[0]); err == nil {
-				disableLog = ok
+				defDisableLog = ok
 			}
 		}
 	},
 }
 
-// tracerCmd represents the tracer command
-var tracerCmd = &cobra.Command{
-	Use:   "tracer",
-	Short: "single trace configuration command",
+// tasksCmd represents the tracer command
+var tasksCmd = &cobra.Command{
+	Use:   "tasks",
+	Short: "tasks configuration command, the input arguments are taskConfig objects in JSON string format",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("tracer called")
-		tracer = cmd.Flag("name").Value.String()
-		taskConfig = cmd.Flag("tasks").Value.String()
-		if ts, err := strconv.Atoi(cmd.Flag("threads").Value.String()); err == nil {
-			sendThreads = ts
+
+		for _, arg := range args {
+			task := &taskConfig{}
+			if err := json.Unmarshal([]byte(arg), task); err != nil {
+				log.Println(err.Error())
+			} else {
+				gtasks = append(gtasks, task)
+			}
 		}
-		if rpt, err := strconv.Atoi(cmd.Flag("repeat").Value.String()); err == nil {
-			sendTimesPerThread = rpt
-		}
-		collectorProto = cmd.Flag("collector_proto").Value.String()
-		collectorIP = cmd.Flag("collector_ip").Value.String()
-		if port, err := strconv.Atoi(cmd.Flag("collector_port").Value.String()); err == nil {
-			collectorPort = port
-		}
-		collectorPath = cmd.Flag("collector_path").Value.String()
+	},
+}
+
+// runCmd represents the run command
+var runCmd = &cobra.Command{
+	Use:   "run",
+	Short: "run a task by name",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println("run called")
+
+	},
+}
+
+// showCmd represents the show command
+var showCmd = &cobra.Command{
+	Use:   "show",
+	Short: "show all the saved tasks configuration",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println("show called")
+
 	},
 }
 
@@ -104,14 +123,10 @@ func init() {
 	rootCmd.AddCommand(configCmd)
 	// add enable log command
 	rootCmd.AddCommand(disableLogCmd)
-	// add tracer command
-	rootCmd.AddCommand(tracerCmd)
-	tracerCmd.PersistentFlags().String("name", "ddtrace", "tracer name this config entry will effect which tracer SDK will be used")
-	tracerCmd.PersistentFlags().String("tasks", "./tasks/user-login.json", "tasks config JSON file path")
-	tracerCmd.PersistentFlags().Int("threads", 10, "value used by amplifier to start `threads` number of threads")
-	tracerCmd.PersistentFlags().Int("repeat", 100, "value used by amplifier to repeatedly send `repeat` times per thread")
-	tracerCmd.PersistentFlags().String("collector_proto", "http", "collector network protocol")
-	tracerCmd.PersistentFlags().String("collector_ip", "127.0.0.1", "collector IP")
-	tracerCmd.PersistentFlags().Int("collector_port", 9529, "collector port")
-	tracerCmd.PersistentFlags().String("collector_path", "/v0.4/traces", "collector path")
+	// add tasks command
+	rootCmd.AddCommand(tasksCmd)
+	// add run command
+	rootCmd.AddCommand(runCmd)
+	// add show command
+	rootCmd.AddCommand(showCmd)
 }

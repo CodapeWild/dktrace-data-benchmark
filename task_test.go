@@ -50,7 +50,7 @@ func nodePrinter(node *node) string {
 }
 
 func TestBuildTree(t *testing.T) {
-	tasks, err := newTaskFromJSONFile("./tasks/user-login.json")
+	tasks, err := newRouteFromJSONFile("./tasks/user-login.json")
 	if err != nil {
 		log.Fatalln(err.Error())
 	}

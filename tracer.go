@@ -23,15 +23,15 @@ import (
 	ddtracer "gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 )
 
-type Span interface {
-	SetTag(key string, value interface{})
-	EndSpan()
-}
-
 type Tracer interface {
 	Start(agentAddress, service string)
 	StartSpan(ctx context.Context) (Span, context.Context)
 	Stop()
+}
+
+type Span interface {
+	SetTag(key string, value interface{})
+	EndSpan()
 }
 
 type ddtracerwrapper struct{}

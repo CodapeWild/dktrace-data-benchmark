@@ -24,71 +24,7 @@ import (
 	"os"
 )
 
-func newTaskFromJSONFile(path string) (task, error) {
-	bts, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var tk task
-	err = json.Unmarshal(bts, &tk)
-
-	return tk, err
-}
-
-type task []*option
-
-func (tk task) findOptionkByID(id int) (*option, bool) {
-	for _, op := range tk {
-		if op.ID == id {
-			return op, true
-		}
-	}
-
-	return nil, false
-}
-
-func (tk task) createTree(tracer Tracer) *tree {
-	if len(tk) == 0 || tracer == nil {
-		log.Printf("create tree with empty task or nil tracer")
-
-		return nil
-	}
-
-	root := tk[0].createNode("")
-	var buildQue = root.children
-	for i := 0; i < len(buildQue); i++ {
-		node := buildQue[i]
-		tk.setNode(node)
-		buildQue = append(buildQue, node.children...)
-	}
-
-	return &tree{root: root, tracer: tracer}
-}
-
-func (tk task) setNode(uncomplete *node) {
-	op, ok := tk.findOptionkByID(uncomplete.id)
-	if !ok {
-		return
-	}
-
-	if uncomplete.service == "" {
-		uncomplete.service = op.Name
-	}
-	uncomplete.name = op.Name
-	uncomplete.action = op.Action
-	uncomplete.status = op.Status
-	uncomplete.message = op.Message
-	for _, c := range op.Calls {
-		if c.Outgoing {
-			uncomplete.children = append(uncomplete.children, &node{id: c.ID})
-		} else {
-			uncomplete.children = append(uncomplete.children, &node{id: c.ID, service: op.Name})
-		}
-	}
-}
-
-type option struct {
+type hop struct {
 	ID      int     `json:"id"`
 	Name    string  `json:"name"`
 	Action  string  `json:"action"`
@@ -97,7 +33,7 @@ type option struct {
 	Calls   []*call `json:"calls"`
 }
 
-func (op *option) createNode(service string) *node {
+func (op *hop) createNode(service string) *node {
 	if service == "" {
 		service = op.Name
 	}
@@ -119,6 +55,70 @@ func (op *option) createNode(service string) *node {
 	}
 
 	return n
+}
+
+type route []*hop
+
+func (h route) findOptionkByID(id int) (*hop, bool) {
+	for _, op := range h {
+		if op.ID == id {
+			return op, true
+		}
+	}
+
+	return nil, false
+}
+
+func (h route) createTree(tracer Tracer) *tree {
+	if len(h) == 0 || tracer == nil {
+		log.Printf("create tree with empty task or nil tracer")
+
+		return nil
+	}
+
+	root := h[0].createNode("")
+	var buildQue = root.children
+	for i := 0; i < len(buildQue); i++ {
+		node := buildQue[i]
+		h.setNode(node)
+		buildQue = append(buildQue, node.children...)
+	}
+
+	return &tree{root: root, tracer: tracer}
+}
+
+func (h route) setNode(uncomplete *node) {
+	op, ok := h.findOptionkByID(uncomplete.id)
+	if !ok {
+		return
+	}
+
+	if uncomplete.service == "" {
+		uncomplete.service = op.Name
+	}
+	uncomplete.name = op.Name
+	uncomplete.action = op.Action
+	uncomplete.status = op.Status
+	uncomplete.message = op.Message
+	for _, c := range op.Calls {
+		if c.Outgoing {
+			uncomplete.children = append(uncomplete.children, &node{id: c.ID})
+		} else {
+			uncomplete.children = append(uncomplete.children, &node{id: c.ID, service: op.Name})
+		}
+	}
+}
+
+func newRouteFromJSONFile(path string) (route, error) {
+	bts, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var h route
+	err = json.Unmarshal(bts, &h)
+
+	return h, err
 }
 
 type call struct {

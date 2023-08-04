@@ -28,13 +28,6 @@ import (
 func main() {
 	Execute()
 
-	var err error
-	benchConf, err = buildBenchmarkConfig()
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-	benchConf.Print()
-
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 	log.SetOutput(os.Stdout)
 	if benchConf.DisableLog {
@@ -42,49 +35,65 @@ func main() {
 		log.SetOutput(nil)
 	}
 
-	if benchConf == nil || len(benchConf.Tracers) == 0 {
+	if benchConf == nil || len(benchConf.Tasks) == 0 {
 		log.Println("dktrace-data-benchmark not configurated properly")
 
 		return
 	}
 
-	for _, v := range benchConf.Tracers {
-		task, err := newTaskFromJSONFile(v.TaskConfig)
-		if err != nil {
-			log.Println(err.Error())
-			continue
-		}
+	runTaskThread()
+}
 
-		var (
-			canceler context.CancelFunc
-			finish   chan struct{}
-		)
-		switch v.Tracer {
-		case dd:
-			canceler, finish, err = benchDDTraceCollector(v, task)
-		case jg:
-		case otel:
-		case pp:
-		case sky:
-		case zpk:
-		default:
-			log.Printf("unrecognized tracer %s\n", v.Tracer)
-		}
-		if err != nil {
-			canceler()
-			log.Println(err.Error())
-			continue
-		}
-		if finish != nil {
-			<-finish
+var (
+	taskChan = make(chan *taskConfig, 100)
+	gcloser  = make(chan struct{})
+)
+
+func runTaskThread() {
+	for {
+		select {
+		case <-gcloser:
+			return
+		case task := <-taskChan:
+			var (
+				canceler context.CancelFunc
+				finish   chan struct{}
+				err      error
+			)
+			switch task.Tracer {
+			case dd:
+				canceler, finish, err = benchDDTraceCollector(task)
+			case jg:
+			case otel:
+			case pp:
+			case sky:
+			case zpk:
+			default:
+				log.Printf("unrecognized task, Name: %s Tracer %s\n", task.Name, task.Tracer)
+			}
+			if err != nil {
+				canceler()
+				log.Println(err.Error())
+				continue
+			}
+			// waiting for the current task to complete and then start the next one multiple
+			// threads benchmark task will seriously affect local host performance
+			if finish != nil {
+				<-finish
+			}
 		}
 	}
 }
 
-func benchDDTraceCollector(tconf *tracerConfig, task task) (canceler context.CancelFunc, finish chan struct{}, err error) {
-	tr := task.createTree(&ddtracerwrapper{})
+func benchDDTraceCollector(taskConf *taskConfig) (canceler context.CancelFunc, finish chan struct{}, err error) {
+	var r route
+	if r, err = newRouteFromJSONFile(taskConf.RouteConfig); err != nil {
+		return
+	}
+
+	tr := r.createTree(&ddtracerwrapper{})
 	agentAddress := agent.NewRandomPortWithLocalHost()
-	canceler, finish, err = agent.BuildDDAgentForWork(agentAddress, tconf.CollectorIP, tconf.CollectorPort, tconf.CollectorPath, tr.count(), tconf.SendThreads, tconf.SendTimesPerThread)
+	canceler, finish, err = agent.BuildDDAgentForWork(agentAddress, taskConf.CollectorIP, taskConf.CollectorPort, taskConf.CollectorPath, tr.count(), taskConf.SendThreads, taskConf.SendTimesPerThread)
 	tr.spawn(context.TODO(), agentAddress)
 
 	return

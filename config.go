@@ -21,52 +21,56 @@ import (
 	"encoding/json"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 )
 
-const (
-	dd   string = "ddtrace"
-	jg   string = "jaeger"
-	otel string = "open-telemetry"
-	pp   string = "pinpoint"
-	sky  string = "skywalking"
-	zpk  string = "zipkin"
-)
-
-type tracerConfigOption func(tconfig *tracerConfig)
+type tracerConfigOption func(tkconf *taskConfig)
 
 func tracerWithName(name string) tracerConfigOption {
-	return func(tconfig *tracerConfig) {
-		tconfig.Tracer = name
+	return func(tkconf *taskConfig) {
+		tkconf.Name = name
 	}
 }
 
-func tracerWithTask(path string) tracerConfigOption {
-	return func(tconfig *tracerConfig) {
-		tconfig.TaskConfig = path
+func tracerWithTracer(tracer string) tracerConfigOption {
+	return func(tkconf *taskConfig) {
+		tkconf.Tracer = tracer
+	}
+}
+
+func tracerWithVersion(version string) tracerConfigOption {
+	return func(tkconf *taskConfig) {
+		tkconf.Version = version
+	}
+}
+
+func tracerWithRoute(path string) tracerConfigOption {
+	return func(tkconf *taskConfig) {
+		tkconf.RouteConfig = path
 	}
 }
 
 func tracerWithAmplifier(threads, repeat int) tracerConfigOption {
-	return func(tconfig *tracerConfig) {
-		tconfig.SendThreads = threads
-		tconfig.SendTimesPerThread = repeat
+	return func(tkconf *taskConfig) {
+		tkconf.SendThreads = threads
+		tkconf.SendTimesPerThread = repeat
 	}
 }
 
 func tracerWithCollector(proto string, ip string, port int, path string) tracerConfigOption {
-	return func(tconfig *tracerConfig) {
-		tconfig.CollectorProto = proto
-		tconfig.CollectorIP = ip
-		tconfig.CollectorPort = port
-		tconfig.CollectorPath = path
+	return func(tkconf *taskConfig) {
+		tkconf.CollectorProto = proto
+		tkconf.CollectorIP = ip
+		tkconf.CollectorPort = port
+		tkconf.CollectorPath = path
 	}
 }
 
-type tracerConfig struct {
+type taskConfig struct {
+	Name               string `json:"name"`
 	Tracer             string `json:"tracer"`
-	TaskConfig         string `json:"task_config"`
+	Version            string `json:"version"`
+	RouteConfig        string `json:"route_config"`
 	SendThreads        int    `json:"send_threads"`
 	SendTimesPerThread int    `json:"send_times_per_thread"`
 	CollectorProto     string `json:"collector_proto"`
@@ -75,80 +79,82 @@ type tracerConfig struct {
 	CollectorPath      string `json:"collector_path"`
 }
 
-func (tconfig *tracerConfig) With(opts ...tracerConfigOption) *tracerConfig {
+func (tkconf *taskConfig) With(opts ...tracerConfigOption) *taskConfig {
 	for _, opt := range opts {
-		opt(tconfig)
+		opt(tkconf)
 	}
 
-	return tconfig
+	return tkconf
 }
 
-func NewTracerConfig(opts ...tracerConfigOption) *tracerConfig {
-	tconfig := &tracerConfig{}
+func (tkconf *taskConfig) Print() {
+	log.Println("------")
+	log.Printf("Name: %s", tkconf.Name)
+	log.Printf("Tracer: %s", tkconf.Tracer)
+	log.Printf("Version: %s", tkconf.Version)
+	log.Printf("Route: %s", tkconf.RouteConfig)
+	log.Printf("Threads: %d Repeated: %d", tkconf.SendThreads, tkconf.SendTimesPerThread)
+	log.Printf("Collector: <%s//%s:%s%s>", tkconf.CollectorProto, tkconf.CollectorIP, tkconf.CollectorPort, tkconf.CollectorPath)
+}
+
+func NewTaskConfig(opts ...tracerConfigOption) *taskConfig {
+	tkconf := &taskConfig{}
 	for _, opt := range opts {
-		opt(tconfig)
+		opt(tkconf)
 	}
 
-	return tconfig
+	return tkconf
 }
 
-type benchConfigOption func(dconfig *benchConfig)
+type benchConfigOption func(bconf *benchConfig)
 
 func benchWithLog(enable bool) benchConfigOption {
-	return func(dconfig *benchConfig) {
-		dconfig.DisableLog = enable
+	return func(bconf *benchConfig) {
+		bconf.DisableLog = enable
 	}
 }
 
-func benchWithTracers(tconfigs ...*tracerConfig) benchConfigOption {
-	return func(dconfig *benchConfig) {
-		for i := range tconfigs {
+func benchWithTasks(tasks ...*taskConfig) benchConfigOption {
+	return func(bconf *benchConfig) {
+		for _, new := range tasks {
 			found := false
-			for j := 0; j < len(dconfig.Tracers); j++ {
-				if dconfig.Tracers[j].Tracer == tconfigs[i].Tracer {
-					dconfig.Tracers[j] = tconfigs[i]
+			for _, origin := range bconf.Tasks {
+				if origin.Name == new.Name {
+					origin = new
 					found = true
 					break
 				}
 			}
 			if !found {
-				dconfig.Tracers = append(dconfig.Tracers, tconfigs[i])
+				bconf.Tasks = append(bconf.Tasks, new)
 			}
 		}
 	}
 }
 
 type benchConfig struct {
-	DisableLog bool            `json:"disable_log"`
-	Tracers    []*tracerConfig `json:"tracers"`
+	DisableLog bool          `json:"disable_log"`
+	Tasks      []*taskConfig `json:"tasks"`
 }
 
-func (bconfig *benchConfig) With(opts ...benchConfigOption) *benchConfig {
+func (bconf *benchConfig) With(opts ...benchConfigOption) *benchConfig {
 	for _, opt := range opts {
-		opt(bconfig)
+		opt(bconf)
 	}
 
-	return bconfig
+	return bconf
 }
 
-func (bconfig *benchConfig) Print() {
+func (bconf *benchConfig) Print() {
 	log.Println("benchmark config:")
 	log.Println("##################")
-	if bconfig.DisableLog {
+	if bconf.DisableLog {
 		log.Println("log: disabled")
 	} else {
 		log.Println("log: enabled")
 	}
-	for _, tconf := range bconfig.Tracers {
-		log.Println("------")
-		log.Printf("tracer: %s", tconf.Tracer)
-		log.Printf("task config: %s", tconf.TaskConfig)
-		log.Printf("send threads: %d", tconf.SendThreads)
-		log.Printf("send times per thread: %d", tconf.SendTimesPerThread)
-		log.Printf("collector proto: %s", tconf.CollectorProto)
-		log.Printf("collector ip: %s", tconf.CollectorIP)
-		log.Printf("collector port: %d", tconf.CollectorPort)
-		log.Printf("collector path: %s", tconf.CollectorPath)
+	for _, tkconf := range bconf.Tasks {
+		tkconf.Print()
 	}
 }
 
@@ -161,6 +167,15 @@ func NewBenchmarkConfig(opts ...benchConfigOption) *benchConfig {
 	return dconfig
 }
 
+const (
+	dd   string = "ddtrace"
+	jg   string = "jaeger"
+	otel string = "open-telemetry"
+	pp   string = "pinpoint"
+	sky  string = "skywalking"
+	zpk  string = "zipkin"
+)
+
 var (
 	tracers = map[string]bool{
 		dd:   true,
@@ -170,24 +185,27 @@ var (
 		sky:  true,
 		zpk:  true,
 	}
-	envs = []string{"DKTRACE_CONFIG", "DKTRACE_DISABLE_LOG",
-		"DKTRACE_TRACER", "DKTRACE_TASK_CONFIG", "DKTRACE_THREADS", "DKTRACE_SEND_TIMES_PER_THREAD",
-		"DKTRACE_COLLECTOR_PROTO", "DKTRACE_COLLECTOR_IP", "DKTRACE_COLLECTOR_PORT", "DKTRACE_COLLECTOR_PATH"}
+	envs      = []string{"DKTRACE_CONFIG", "DKTRACE_DISABLE_LOG", "DKTRACE_TASKS"}
 	benchConf *benchConfig
+	gtasks    []*taskConfig
 )
 
 // default configurations
 var (
-	configFilePath     = "./config.json"
-	disableLog         = false
-	tracer             = dd
-	taskConfig         = "./tasks/user-login.json"
-	sendThreads        = 10
-	sendTimesPerThread = 100
-	collectorProto     = "http"
-	collectorIP        = "127.0.0.1"
-	collectorPort      = 9529
-	collectorPath      = "/v0.4/traces"
+	defBenchConf  = "./config.json"
+	defDisableLog = false
+	defTask       = &taskConfig{
+		Name:               "dd-v0.4",
+		Tracer:             "v0.4",
+		Version:            "ddtrace",
+		RouteConfig:        "./routes/user-login.json",
+		SendThreads:        3,
+		SendTimesPerThread: 10,
+		CollectorProto:     "http",
+		CollectorIP:        "127.0.0.1",
+		CollectorPort:      9529,
+		CollectorPath:      "/v0.4/traces",
+	}
 )
 
 func loadEnvVariables() {
@@ -198,33 +216,20 @@ func loadEnvVariables() {
 		}
 		switch key {
 		case "DKTRACE_CONFIG":
-			configFilePath = v
+			defBenchConf = v
 		case "DKTRACE_DISABLE_LOG":
 			if b := strings.ToLower(v); b == "true" {
-				disableLog = true
+				defDisableLog = true
 			}
-		case "DKTRACE_TRACER":
-			tracer = v
-		case "DKTRACE_TASK_CONFIG":
-			taskConfig = v
-		case "DKTRACE_THREADS":
-			if threads, err := strconv.Atoi(v); err == nil || threads > 0 {
-				sendThreads = threads
+		case "DKTRACE_TASKS":
+			var tasks = &[]*taskConfig{}
+			if err := json.Unmarshal([]byte(v), tasks); err != nil {
+				log.Println(err.Error())
+			} else {
+				for _, task := range *tasks {
+					gtasks = append(gtasks, task)
+				}
 			}
-		case "DKTRACE_SEND_TIMES_PER_THREAD":
-			if times, err := strconv.Atoi(v); err == nil || times > 0 {
-				sendTimesPerThread = times
-			}
-		case "DKTRACE_COLLECTOR_PROTO":
-			collectorProto = v
-		case "DKTRACE_COLLECTOR_IP":
-			collectorIP = v
-		case "DKTRACE_COLLECTOR_PORT":
-			if port, err := strconv.Atoi(v); err == nil || port > 0 {
-				collectorPort = port
-			}
-		case "DKTRACE_COLLECTOR_PATH":
-			collectorPath = v
 		}
 	}
 }
@@ -241,17 +246,6 @@ func loadConfigFile(path string) (*benchConfig, error) {
 	}
 
 	return &benchConf, nil
-}
-
-func buildBenchmarkConfig() (*benchConfig, error) {
-	if configFilePath != "" {
-		return loadConfigFile(configFilePath)
-	} else {
-		return NewBenchmarkConfig(benchWithLog(disableLog),
-			benchWithTracers(NewTracerConfig(tracerWithName(tracer), tracerWithTask(taskConfig),
-				tracerWithAmplifier(sendThreads, sendTimesPerThread),
-				tracerWithCollector(collectorProto, collectorIP, collectorPort, collectorPath)))), nil
-	}
 }
 
 func init() {
