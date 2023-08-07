@@ -4,6 +4,7 @@
     {
       "name": "dd-v0.4",
       "tracer": "ddtrace",
+      "version": "",
       "route_config": "./routes/user-login.json",
       "send_threads": 3,
       "send_times_per_thread": 10,
@@ -15,6 +16,7 @@
     {
       "name": "jg-http",
       "tracer": "jaeger",
+      "version": "",
       "route_config": "./routes/user-login.json",
       "send_threads": 3,
       "send_times_per_thread": 10,

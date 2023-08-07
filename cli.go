@@ -74,7 +74,9 @@ var tasksCmd = &cobra.Command{
 		if len(gTasks) != 0 {
 			mergeTasks(&gBenchConf.Tasks, gTasks)
 		}
-		dumpBenchConfigFile(defBenchConf, gBenchConf)
+		if err := dumpBenchConfigFile(defBenchConf, gBenchConf); err != nil {
+			log.Println(err.Error())
+		}
 	},
 }
 
