@@ -94,7 +94,7 @@ func (tkconf *taskConfig) Print() {
 	log.Printf("Version: %s", tkconf.Version)
 	log.Printf("Route: %s", tkconf.RouteConfig)
 	log.Printf("Threads: %d Repeated: %d", tkconf.SendThreads, tkconf.SendTimesPerThread)
-	log.Printf("Collector: <%s//%s:%s%s>", tkconf.CollectorProto, tkconf.CollectorIP, tkconf.CollectorPort, tkconf.CollectorPath)
+	log.Printf("Collector: <%s://%s:%d%s>", tkconf.CollectorProto, tkconf.CollectorIP, tkconf.CollectorPort, tkconf.CollectorPath)
 }
 
 func NewTaskConfig(opts ...tracerConfigOption) *taskConfig {

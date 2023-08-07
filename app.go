@@ -47,6 +47,7 @@ func main() {
 var (
 	gTaskChan = make(chan *taskConfig, 20)
 	gCloser   = make(chan struct{})
+	gFinish   = make(chan struct{})
 )
 
 func runTaskThread() {
@@ -81,6 +82,7 @@ func runTaskThread() {
 			if finish != nil {
 				<-finish
 			}
+			gFinish <- struct{}{}
 		}
 	}
 }

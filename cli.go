@@ -109,16 +109,25 @@ var runCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		go runTaskThread()
 
+		var c = 0
 		for _, arg := range args {
 			found := false
 			for _, task := range gBenchConf.Tasks {
 				if task.Name == arg {
 					gTaskChan <- task
+					c++
 					found = true
 				}
 			}
 			if !found {
 				log.Printf("task: %s not found", arg)
+			}
+		}
+		for range gFinish {
+			if c--; c == 0 {
+				log.Println("all tasks finished")
+
+				return
 			}
 		}
 	},
