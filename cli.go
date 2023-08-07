@@ -93,12 +93,12 @@ var showCmd = &cobra.Command{
 		fmt.Println("show called")
 
 		if len(args) == 0 {
-			for _, task := range gTasks {
+			for _, task := range gBenchConf.Tasks {
 				task.Print()
 			}
 		} else {
 			for _, arg := range args {
-				for _, task := range gTasks {
+				for _, task := range gBenchConf.Tasks {
 					if task.Name == arg {
 						task.Print()
 					}
@@ -118,7 +118,7 @@ var runCmd = &cobra.Command{
 
 		for _, arg := range args {
 			found := false
-			for _, task := range gTasks {
+			for _, task := range gBenchConf.Tasks {
 				if task.Name == arg {
 					gTaskChan <- task
 					found = true
