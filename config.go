@@ -146,8 +146,8 @@ func (bconf *benchConfig) With(opts ...benchConfigOption) *benchConfig {
 }
 
 func (bconf *benchConfig) Print() {
-	log.Println("benchmark config:")
-	log.Println("##################")
+	log.Println("trace benchmark config:")
+	log.Println("### ### ###")
 	if bconf.DisableLog {
 		log.Println("log: disabled")
 	} else {
@@ -158,7 +158,7 @@ func (bconf *benchConfig) Print() {
 	}
 }
 
-func NewBenchmarkConfig(opts ...benchConfigOption) *benchConfig {
+func newBenchmarkConfig(opts ...benchConfigOption) *benchConfig {
 	dconfig := &benchConfig{}
 	for _, opt := range opts {
 		opt(dconfig)
@@ -185,9 +185,9 @@ var (
 		sky:  true,
 		zpk:  true,
 	}
-	envs      = []string{"DKTRACE_CONFIG", "DKTRACE_DISABLE_LOG", "DKTRACE_TASKS"}
-	benchConf *benchConfig
-	gTasks    []*taskConfig
+	envs       = []string{"DKTRACE_CONFIG", "DKTRACE_DISABLE_LOG", "DKTRACE_TASKS"}
+	gBenchConf *benchConfig
+	gTasks     []*taskConfig
 )
 
 // default configurations
@@ -195,7 +195,7 @@ var (
 	defBenchConf  = "./config.json"
 	defDisableLog = false
 	defTask       = &taskConfig{
-		Name:               "dd-v0.4",
+		Name:               "default",
 		Tracer:             "v0.4",
 		Version:            "ddtrace",
 		RouteConfig:        "./routes/user-login.json",
@@ -234,7 +234,7 @@ func loadEnvVariables() {
 	}
 }
 
-func loadConfigFile(path string) (*benchConfig, error) {
+func loadBenchConfigFile(path string) (*benchConfig, error) {
 	bts, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -248,6 +248,40 @@ func loadConfigFile(path string) (*benchConfig, error) {
 	return &benchConf, nil
 }
 
+func mergeTasks(dst *[]*taskConfig, src []*taskConfig) {
+	for _, s := range src {
+		found := false
+		for _, d := range *dst {
+			if d.Name == s.Name {
+				found = true
+				d = s
+				break
+			}
+		}
+		if !found {
+			*dst = append(*dst, s)
+		}
+	}
+}
+
+func dumpBenchConfigFile(path string, benchConf *benchConfig) error {
+	bts, err := json.Marshal(benchConf)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(defBenchConf, bts, 0644)
+}
+
+// exec config procedure
 func init() {
 	loadEnvVariables()
+	var err error
+	gBenchConf, err = loadBenchConfigFile(defBenchConf)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+	if len(gTasks) != 0 {
+		mergeTasks(&gBenchConf.Tasks, gTasks)
+	}
 }

@@ -30,12 +30,12 @@ func main() {
 
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 	log.SetOutput(os.Stdout)
-	if benchConf.DisableLog {
+	if gBenchConf.DisableLog {
 		log.Println("log disabled")
 		log.SetOutput(nil)
 	}
 
-	if benchConf == nil || len(benchConf.Tasks) == 0 {
+	if gBenchConf == nil || len(gBenchConf.Tasks) == 0 {
 		log.Println("dktrace-data-benchmark not configurated properly")
 
 		return

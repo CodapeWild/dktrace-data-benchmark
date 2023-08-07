@@ -77,29 +77,11 @@ var tasksCmd = &cobra.Command{
 				gTasks = append(gTasks, task)
 			}
 		}
-	},
-}
 
-// runCmd represents the run command
-var runCmd = &cobra.Command{
-	Use: "run",
-	Short: `run task by name, task name required, multiple arguments supported but normally do not input more
-	than 10 tasks at once which will take too long to complete`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("run called")
-
-		for _, arg := range args {
-			found := false
-			for _, task := range gTasks {
-				if task.Name == arg {
-					gTaskChan <- task
-					found = true
-				}
-			}
-			if !found {
-				log.Printf("task: %s not found", arg)
-			}
+		if len(gTasks) != 0 {
+			mergeTasks(&gBenchConf.Tasks, gTasks)
 		}
+		dumpBenchConfigFile(defBenchConf, gBenchConf)
 	},
 }
 
@@ -121,6 +103,29 @@ var showCmd = &cobra.Command{
 						task.Print()
 					}
 				}
+			}
+		}
+	},
+}
+
+// runCmd represents the run command
+var runCmd = &cobra.Command{
+	Use: "run",
+	Short: `run task by name, task name required, multiple arguments supported but normally do not input more
+	than 10 tasks at once which will take too long to complete`,
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println("run called")
+
+		for _, arg := range args {
+			found := false
+			for _, task := range gTasks {
+				if task.Name == arg {
+					gTaskChan <- task
+					found = true
+				}
+			}
+			if !found {
+				log.Printf("task: %s not found", arg)
 			}
 		}
 	},
@@ -151,8 +156,8 @@ func init() {
 	rootCmd.AddCommand(disableLogCmd)
 	// add tasks command
 	rootCmd.AddCommand(tasksCmd)
-	// add run command
-	rootCmd.AddCommand(runCmd)
 	// add show command
 	rootCmd.AddCommand(showCmd)
+	// add run command
+	rootCmd.AddCommand(runCmd)
 }
