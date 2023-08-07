@@ -19,7 +19,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -39,8 +38,6 @@ var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "benchmark configuration file path in JSON format",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("config called")
-
 		if len(args) != 0 {
 			defBenchConf = args[0]
 		}
@@ -52,8 +49,6 @@ var disableLogCmd = &cobra.Command{
 	Use:   "disable-log",
 	Short: "disable log output",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("disableLog called")
-
 		if len(args) != 0 {
 			if ok, err := strconv.ParseBool(args[0]); err == nil {
 				defDisableLog = ok
@@ -67,8 +62,6 @@ var tasksCmd = &cobra.Command{
 	Use:   "tasks",
 	Short: "tasks configuration command, JSON object string required, multiple arguments supported",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("tasks called")
-
 		for _, arg := range args {
 			task := &taskConfig{}
 			if err := json.Unmarshal([]byte(arg), task); err != nil {
@@ -90,8 +83,6 @@ var showCmd = &cobra.Command{
 	Use:   "show",
 	Short: "show all the saved tasks configuration if no task name offered, otherwise show as arguments provided",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("show called")
-
 		if len(args) == 0 {
 			for _, task := range gBenchConf.Tasks {
 				task.Print()
@@ -114,7 +105,7 @@ var runCmd = &cobra.Command{
 	Short: `run task by name, task name required, multiple arguments supported but normally do not input more
 	than 10 tasks at once which will take too long to complete`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("run called")
+		go runTaskThread()
 
 		for _, arg := range args {
 			found := false

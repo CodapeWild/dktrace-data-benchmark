@@ -41,7 +41,7 @@ func main() {
 		return
 	}
 
-	runTaskThread()
+	// runTaskThread()
 }
 
 var (
