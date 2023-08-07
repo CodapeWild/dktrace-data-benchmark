@@ -29,7 +29,7 @@ import (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:     "dktrace-data-benchmark",
-	Aliases: []string{"dkbench"},
+	Aliases: []string{"dkb", "dkbench"},
 	Short:   "benchmark widget written for Datakit trace test",
 }
 
