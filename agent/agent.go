@@ -17,10 +17,11 @@
 
 package agent
 
-import "context"
+import (
+	"context"
+)
 
-type Agent interface {
-}
+type Agent interface{}
 
 /*
 	Amplifier is a client and capable to send traces to backend collector
@@ -28,6 +29,6 @@ type Agent interface {
 */
 type Amplifier interface {
 	SendData(value any) error
-	StartThreads(ctx context.Context) error
-	Close() error
+	StartThreads(ctx context.Context) (finish chan struct{}, err error)
+	Close()
 }

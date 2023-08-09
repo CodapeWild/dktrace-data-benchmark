@@ -19,7 +19,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"math/rand"
 	"os"
 
 	"github.com/CodapeWild/dktrace-data-benchmark/agent"
@@ -65,6 +67,7 @@ func runTaskThread() {
 			case dd:
 				canceler, finish, err = benchDDTraceCollector(task)
 			case jg:
+				canceler, finish, err = benchJaegerCollector(task)
 			case otel:
 			case pp:
 			case sky:
@@ -87,15 +90,40 @@ func runTaskThread() {
 	}
 }
 
+// generate a random port ranging from 6000 to 9000
+func newRandomPortWithLocalHost() string {
+	return fmt.Sprintf("127.0.0.1:%d", rand.Intn(3000)+6000)
+}
+
 func benchDDTraceCollector(taskConf *taskConfig) (canceler context.CancelFunc, finish chan struct{}, err error) {
 	var r route
 	if r, err = newRouteFromJSONFile(taskConf.RouteConfig); err != nil {
 		return
 	}
 
-	tr := r.createTree(&ddtracerwrapper{})
-	agentAddress := agent.NewRandomPortWithLocalHost()
+	tr := r.createTree(&DDTracerWrapper{})
+	agentAddress := newRandomPortWithLocalHost()
 	canceler, finish, err = agent.BuildDDAgentForWork(agentAddress, taskConf.CollectorIP, taskConf.CollectorPort, taskConf.CollectorPath, tr.count(), taskConf.SendThreads, taskConf.SendTimesPerThread)
+	if err != nil {
+		return
+	}
+	tr.spawn(context.TODO(), agentAddress)
+
+	return
+}
+
+func benchJaegerCollector(taskConf *taskConfig) (canceler context.CancelFunc, finish chan struct{}, err error) {
+	var r route
+	if r, err = newRouteFromJSONFile(taskConf.RouteConfig); err != nil {
+		return
+	}
+
+	tr := r.createTree(&JgTracerWrapper{})
+	agentAddress := newRandomPortWithLocalHost()
+	canceler, finish, err = agent.BuildJgAgentForWork(agentAddress, taskConf.CollectorIP, taskConf.CollectorPort, taskConf.CollectorPath, tr.count(), taskConf.SendThreads, taskConf.SendTimesPerThread)
+	if err != nil {
+		return
+	}
 	tr.spawn(context.TODO(), agentAddress)
 
 	return

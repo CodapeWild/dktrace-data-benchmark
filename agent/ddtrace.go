@@ -33,20 +33,22 @@ import (
 	"github.com/DataDog/datadog-agent/pkg/trace/pb"
 )
 
+var _ Amplifier = (*DDAmplifier)(nil)
+
 var (
-	V01            = "v01"
-	V02            = "v02"
-	V03            = "v03"
-	V04            = "v04"
-	V05            = "v05"
-	V07            = "v07"
-	PatternVersion = map[string]string{
-		"/spans": V01, "/v0.1/spans": V01,
-		"/v0.2/traces": V02,
-		"/v0.3/traces": V03,
-		"/v0.4/traces": V04,
-		"/v0.5/traces": V05,
-		"/v0.7/traces": V07,
+	ddV01            = "v01"
+	ddV02            = "v02"
+	ddV03            = "v03"
+	ddV04            = "v04"
+	ddV05            = "v05"
+	ddV07            = "v07"
+	ddPatternVersion = map[string]string{
+		"/spans": ddV01, "/v0.1/spans": ddV01,
+		"/v0.2/traces": ddV02,
+		"/v0.3/traces": ddV03,
+		"/v0.4/traces": ddV04,
+		"/v0.5/traces": ddV05,
+		"/v0.7/traces": ddV07,
 	}
 )
 
@@ -59,30 +61,30 @@ type DDAgent struct {
 	http.ServeMux
 }
 
-func (dd *DDAgent) Start(addr string) {
+func (ddagt *DDAgent) Start(addr string) {
 	go func() {
-		if err := http.ListenAndServe(addr, dd); err != nil {
+		if err := http.ListenAndServe(addr, ddagt); err != nil {
 			log.Fatalln(err.Error())
 		}
 	}()
 }
 
-func NewDDAgent(ampf *DDAmplifier) *DDAgent {
-	if ampf == nil {
+func NewDDAgent(amp Amplifier) *DDAgent {
+	if amp == nil {
 		log.Fatalln("traces amplifier for ddtrace agent can not be nil")
 	}
 
-	dd := &DDAgent{}
-	for pattern, version := range PatternVersion {
-		dd.HandleFunc(pattern, handleTracesWrapper(version, ampf))
+	agent := &DDAgent{}
+	for p, v := range ddPatternVersion {
+		agent.HandleFunc(p, handleDDTracesWrapper(p, v, amp))
 	}
 
-	return dd
+	return agent
 }
 
-func handleTracesWrapper(version string, ampf *DDAmplifier) http.HandlerFunc {
+func handleDDTracesWrapper(pattern, version string, amp Amplifier) http.HandlerFunc {
 	return func(resp http.ResponseWriter, req *http.Request) {
-		log.Printf("received ddtrace headers:")
+		log.Printf("dd: received headers:")
 		for k, v := range req.Header {
 			log.Printf("%s: %v", k, v)
 		}
@@ -99,20 +101,20 @@ func handleTracesWrapper(version string, ampf *DDAmplifier) http.HandlerFunc {
 			err    error
 		)
 		switch version {
-		case V01:
+		case ddV01:
 			var spans []*pb.Span
 			if err = json.NewDecoder(req.Body).Decode(&spans); err == nil {
 				traces = append(traces, pb.Trace(spans))
 			}
-		case V02, V03, V04:
+		case ddV02, ddV03, ddV04:
 			traces, err = decodeRequest(req)
-		case V05:
+		case ddV05:
 			bufpool.MakeUseOfBuffer(func(buf *bytes.Buffer) {
 				if _, err = io.Copy(buf, req.Body); err == nil {
 					err = traces.UnmarshalMsgDictionary(buf.Bytes())
 				}
 			})
-		case V07:
+		case ddV07:
 			bufpool.MakeUseOfBuffer(func(buf *bytes.Buffer) {
 				if _, err = io.Copy(buf, req.Body); err == nil {
 					_, err = traces.UnmarshalMsg(buf.Bytes())
@@ -134,7 +136,7 @@ func handleTracesWrapper(version string, ampf *DDAmplifier) http.HandlerFunc {
 
 		log.Printf("%v", traces)
 
-		ampf.SendData(&ddReqWrapper{headers: req.Header, traces: traces})
+		amp.SendData(&ddReqWrapper{headers: req.Header, traces: traces})
 	}
 }
 
@@ -142,7 +144,7 @@ func reply(version string, resp http.ResponseWriter, err error) {
 	if err == nil {
 		resp.WriteHeader(http.StatusOK)
 		switch version {
-		case V01, V02, V03:
+		case ddV01, ddV02, ddV03:
 			io.WriteString(resp, "OK\n")
 		default:
 			resp.Header().Set("Content-Type", "application/json")
@@ -197,29 +199,29 @@ type DDAmplifier struct {
 	closer             chan struct{}
 }
 
-func (ddampf *DDAmplifier) SendData(value any) error {
+func (ddamp *DDAmplifier) SendData(value any) error {
 	ddreq, ok := value.(*ddReqWrapper)
 	if !ok {
 		return comerr.ErrAssertFailed
 	}
 
-	ddampf.traces = append(ddampf.traces, ddreq.traces...)
+	ddamp.traces = append(ddamp.traces, ddreq.traces...)
 	for _, trace := range ddreq.traces {
-		ddampf.receivedSpansCount += len(trace)
+		ddamp.receivedSpansCount += len(trace)
 	}
-	if ddampf.receivedSpansCount >= ddampf.expectedSpansCount {
-		ddampf.ddReqChan <- ddreq
+	if ddamp.receivedSpansCount >= ddamp.expectedSpansCount {
+		ddamp.ddReqChan <- ddreq
 	}
 
 	return nil
 }
 
-func (ddampf *DDAmplifier) StartThreads(ctx context.Context) (chan struct{}, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
+func (ddamp *DDAmplifier) StartThreads(ctx context.Context) (finish chan struct{}, err error) {
+	if err = ctx.Err(); err != nil {
+		return
 	}
 
-	finish := make(chan struct{})
+	finish = make(chan struct{})
 	go func() {
 		var finished int
 		for {
@@ -232,15 +234,15 @@ func (ddampf *DDAmplifier) StartThreads(ctx context.Context) (chan struct{}, err
 				}
 
 				return
-			case <-ddampf.closer:
+			case <-ddamp.closer:
 				log.Println("ddtrace amplifier closed")
 
 				return
-			case traces := <-ddampf.ddReqChan:
-				ddampf.runThreads(traces)
-			case thID := <-ddampf.finish:
+			case traces := <-ddamp.ddReqChan:
+				ddamp.runThreads(traces)
+			case thID := <-ddamp.finish:
 				log.Printf("thread id: %d accomplished", thID)
-				if finished++; finished == ddampf.threads {
+				if finished++; finished == ddamp.threads {
 					finish <- struct{}{}
 
 					return
@@ -249,28 +251,28 @@ func (ddampf *DDAmplifier) StartThreads(ctx context.Context) (chan struct{}, err
 		}
 	}()
 
-	return finish, nil
+	return
 }
 
-func (ddampf *DDAmplifier) Close() {
+func (ddamp *DDAmplifier) Close() {
 	select {
-	case <-ddampf.closer:
+	case <-ddamp.closer:
 		return
 	default:
-		close(ddampf.closer)
+		close(ddamp.closer)
 	}
 }
 
-func (ddampf *DDAmplifier) runThreads(ddreq *ddReqWrapper) {
+func (ddamp *DDAmplifier) runThreads(ddreq *ddReqWrapper) {
 	client := http.Client{Transport: newSingleHostTransport()}
-	for i := 1; i <= ddampf.threads; i++ {
+	for i := 1; i <= ddamp.threads; i++ {
 		dupli := duplicateDDTraces(ddreq.traces)
 		go func(traces pb.Traces, i int) {
-			for j := 1; j <= ddampf.repeat; j++ {
+			for j := 1; j <= ddamp.repeat; j++ {
 				if bts, err := traces.MarshalMsg(nil); err != nil {
 					log.Println(err.Error())
 				} else {
-					req, err := http.NewRequest(http.MethodPost, ddampf.colAddr, bytes.NewBuffer(bts))
+					req, err := http.NewRequest(http.MethodPost, ddamp.colAddr, bytes.NewBuffer(bts))
 					if err != nil {
 						log.Fatalln(err)
 					}
@@ -285,7 +287,7 @@ func (ddampf *DDAmplifier) runThreads(ddreq *ddReqWrapper) {
 				}
 				changeIDs(traces)
 			}
-			ddampf.finish <- i
+			ddamp.finish <- i
 		}(dupli, i)
 	}
 }
@@ -324,7 +326,7 @@ func changeIDs(traces pb.Traces) {
 	}
 }
 
-func NewDDAmplifier(ip string, port int, path string, expectedSpansCount, threads, repeat int) *DDAmplifier {
+func newDDAmplifier(ip string, port int, path string, expectedSpansCount, threads, repeat int) *DDAmplifier {
 	return &DDAmplifier{
 		colAddr:            fmt.Sprintf("http://%s:%d%s", ip, port, path),
 		expectedSpansCount: expectedSpansCount,
@@ -339,7 +341,7 @@ func NewDDAmplifier(ip string, port int, path string, expectedSpansCount, thread
 func BuildDDAgentForWork(agentAddress string, endpointIP string, endpointPort int, endpointPath string, expectedSpansCount, threads, repeat int) (context.CancelFunc, chan struct{}, error) {
 	ctx, canceler := context.WithCancel(context.TODO())
 
-	ampf := NewDDAmplifier(endpointIP, endpointPort, endpointPath, expectedSpansCount, threads, repeat)
+	ampf := newDDAmplifier(endpointIP, endpointPort, endpointPath, expectedSpansCount, threads, repeat)
 	finish, err := ampf.StartThreads(ctx)
 	if err != nil {
 		return nil, nil, err

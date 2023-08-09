@@ -22,8 +22,6 @@ import (
 	"time"
 )
 
-type ctxTracerKey struct{}
-
 type ctxNodeInfoKey struct{}
 
 func (n *node) spawn(ctx context.Context, tracer Tracer) {

@@ -18,9 +18,7 @@
 package agent
 
 import (
-	"fmt"
 	"log"
-	"math/rand"
 	"mime"
 	"net"
 	"net/http"
@@ -51,9 +49,4 @@ func newSingleHostTransport() *http.Transport {
 		ExpectContinueTimeout: time.Second,
 		WriteBufferSize:       10 * 1024,
 	}
-}
-
-// generate a random port ranging from 6000 to 9000
-func NewRandomPortWithLocalHost() string {
-	return fmt.Sprintf("127.0.0.1:%d", rand.Intn(3000)+6000)
 }

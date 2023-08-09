@@ -5,7 +5,9 @@ go 1.18
 require (
 	github.com/CodapeWild/devkit v0.0.0-20230718104004-53296acb50b5
 	github.com/DataDog/datadog-agent/pkg/trace v0.44.1
+	github.com/opentracing/opentracing-go v1.2.0
 	github.com/spf13/cobra v1.7.0
+	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	gopkg.in/DataDog/dd-trace-go.v1 v1.50.1
 )
 
@@ -17,6 +19,7 @@ require (
 	github.com/DataDog/go-libddwaf v1.1.0 // indirect
 	github.com/DataDog/go-tuf v0.3.0--fix-localmeta-fork // indirect
 	github.com/DataDog/sketches-go v1.4.1 // indirect
+	github.com/HdrHistogram/hdrhistogram-go v1.1.2 // indirect
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
@@ -31,6 +34,7 @@ require (
 	github.com/secure-systems-lab/go-securesystemslib v0.5.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/tinylib/msgp v1.1.6 // indirect
+	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go4.org/intern v0.0.0-20211027215823-ae77deb06f29 // indirect
 	go4.org/unsafe/assume-no-moving-gc v0.0.0-20220617031537-928513b29760 // indirect

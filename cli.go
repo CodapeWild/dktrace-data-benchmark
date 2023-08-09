@@ -126,8 +126,7 @@ var runCmd = &cobra.Command{
 		for range gFinish {
 			if c--; c == 0 {
 				log.Println("all tasks finished")
-
-				return
+				break
 			}
 		}
 	},
