@@ -69,7 +69,7 @@ func (ddagt *DDAgent) Start(addr string) {
 	}()
 }
 
-func NewDDAgent(amp Amplifier) *DDAgent {
+func newDDAgent(amp Amplifier) *DDAgent {
 	if amp == nil {
 		log.Fatalln("traces amplifier for ddtrace agent can not be nil")
 	}
@@ -84,7 +84,7 @@ func NewDDAgent(amp Amplifier) *DDAgent {
 
 func handleDDTracesWrapper(pattern, version string, amp Amplifier) http.HandlerFunc {
 	return func(resp http.ResponseWriter, req *http.Request) {
-		log.Printf("dd: received headers:")
+		log.Printf("dd: received http headers:")
 		for k, v := range req.Header {
 			log.Printf("%s: %v", k, v)
 		}
@@ -120,10 +120,12 @@ func handleDDTracesWrapper(pattern, version string, amp Amplifier) http.HandlerF
 					_, err = traces.UnmarshalMsg(buf.Bytes())
 				}
 			})
+		default:
+			err = comerr.ErrUnrecognizedParameters(version)
 		}
 
 		// reply ok or error based on parameter err
-		reply(version, resp, err)
+		reply(pattern, version, resp, err)
 		if err != nil {
 			log.Println(err.Error())
 
@@ -134,13 +136,11 @@ func handleDDTracesWrapper(pattern, version string, amp Amplifier) http.HandlerF
 			return
 		}
 
-		log.Printf("%v", traces)
-
 		amp.SendData(&ddReqWrapper{headers: req.Header, traces: traces})
 	}
 }
 
-func reply(version string, resp http.ResponseWriter, err error) {
+func reply(pattern, version string, resp http.ResponseWriter, err error) {
 	if err == nil {
 		resp.WriteHeader(http.StatusOK)
 		switch version {
@@ -347,7 +347,7 @@ func BuildDDAgentForWork(agentAddress string, endpointIP string, endpointPort in
 		return nil, nil, err
 	}
 
-	agent := NewDDAgent(ampf)
+	agent := newDDAgent(ampf)
 	agent.Start(agentAddress)
 
 	return canceler, finish, nil

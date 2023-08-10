@@ -19,7 +19,6 @@ package agent
 
 import (
 	"context"
-	"io"
 	"log"
 	"net/http"
 )
@@ -49,7 +48,7 @@ func (jga *JgAgent) Start(addr string) {
 	}()
 }
 
-func NewJgAgent(amp Amplifier) *JgAgent {
+func newJgAgent(amp Amplifier) *JgAgent {
 	if amp == nil {
 		log.Fatalln("traces amplifier for jaeger agent can not be nil")
 	}
@@ -64,11 +63,15 @@ func NewJgAgent(amp Amplifier) *JgAgent {
 
 func handleJgTracesWrapper(pattern, version string, amp Amplifier) http.HandlerFunc {
 	return func(resp http.ResponseWriter, req *http.Request) {
-		bts, err := io.ReadAll(req.Body)
-		if err != nil {
-			log.Fatalln(err.Error())
+		log.Println("jg: received http headers")
+		for k, v := range req.Header {
+			log.Printf("%s: %v", k, v)
 		}
-		log.Println(string(bts))
+
+		switch version {
+		case jgV01:
+		default:
+		}
 	}
 }
 
@@ -100,7 +103,7 @@ func BuildJgAgentForWork(agentAddress string, endpointIP string, endpointPort in
 		return nil, nil, err
 	}
 
-	agent := NewJgAgent(ampf)
+	agent := newJgAgent(ampf)
 	agent.Start(agentAddress)
 
 	return canceler, finish, nil
