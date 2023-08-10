@@ -1,7 +1,7 @@
 dmitri.shuralyov.com/gpu/mtl v0.0.0-20190408044501-666a987793e9/go.mod h1:H6x//7gZCb22OMCxBHrMx7a5I7Hp++hsVxbQ4BYO7hU=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
-github.com/CodapeWild/devkit v0.0.0-20230802071610-d6f50ffdeef3 h1:tXP/vm4/G5ruCmc3EcZaq69S+kdNIjWSjF6zvhwkj98=
-github.com/CodapeWild/devkit v0.0.0-20230802071610-d6f50ffdeef3/go.mod h1:wcjyagb0cwlxnRVX0/XF1CaY0iy6Yb6+3ZgE2NS+g6o=
+github.com/CodapeWild/devkit v0.0.0-20230810114359-06f2a041b590 h1:mJreFwYcpfGYz8p4xAbaDeGzrq13tOYOxF9hq2XKhcY=
+github.com/CodapeWild/devkit v0.0.0-20230810114359-06f2a041b590/go.mod h1:wcjyagb0cwlxnRVX0/XF1CaY0iy6Yb6+3ZgE2NS+g6o=
 github.com/DataDog/appsec-internal-go v1.0.0 h1:2u5IkF4DBj3KVeQn5Vg2vjPUtt513zxEYglcqnd500U=
 github.com/DataDog/appsec-internal-go v1.0.0/go.mod h1:+Y+4klVWKPOnZx6XESG7QHydOaUGEXyH2j/vSg9JiNM=
 github.com/DataDog/datadog-agent/pkg/obfuscate v0.44.1 h1:+6Kx8N5Nx+L6CWWLSPl3doBzF4bqH+7DOPMXfOnRBg4=

@@ -30,10 +30,11 @@ import (
 
 	"github.com/CodapeWild/devkit/bufpool"
 	"github.com/CodapeWild/devkit/comerr"
+	dkhttp "github.com/CodapeWild/devkit/net/http"
 	"github.com/DataDog/datadog-agent/pkg/trace/pb"
 )
 
-var _ Amplifier = (*DDAmplifier)(nil)
+var _ Amplifier = (*ddAmplifier)(nil)
 
 var (
 	ddV01            = "v01"
@@ -53,8 +54,8 @@ var (
 )
 
 type ddReqWrapper struct {
-	headers http.Header
-	traces  pb.Traces
+	header http.Header
+	traces pb.Traces
 }
 
 type DDAgent struct {
@@ -107,7 +108,7 @@ func handleDDTracesWrapper(pattern, version string, amp Amplifier) http.HandlerF
 				traces = append(traces, pb.Trace(spans))
 			}
 		case ddV02, ddV03, ddV04:
-			traces, err = decodeRequest(req)
+			traces, err = decodeDDRequest(req)
 		case ddV05:
 			bufpool.MakeUseOfBuffer(func(buf *bytes.Buffer) {
 				if _, err = io.Copy(buf, req.Body); err == nil {
@@ -131,12 +132,12 @@ func handleDDTracesWrapper(pattern, version string, amp Amplifier) http.HandlerF
 
 			return
 		} else if len(traces) == 0 {
-			log.Println("empty traces")
+			log.Println("dd: empty trace")
 
 			return
 		}
 
-		amp.SendData(&ddReqWrapper{headers: req.Header, traces: traces})
+		amp.AppendData(&ddReqWrapper{header: req.Header, traces: traces})
 	}
 }
 
@@ -155,7 +156,7 @@ func reply(pattern, version string, resp http.ResponseWriter, err error) {
 	}
 }
 
-func decodeRequest(req *http.Request) (pb.Traces, error) {
+func decodeDDRequest(req *http.Request) (pb.Traces, error) {
 	var (
 		traces pb.Traces
 		err    error
@@ -188,35 +189,38 @@ func countTraces(req *http.Request) int {
 	}
 }
 
-type DDAmplifier struct {
+type ddAmplifier struct {
 	colAddr            string
 	threads, repeat    int
 	expectedSpansCount int
 	receivedSpansCount int
+	header             http.Header
 	traces             pb.Traces
 	ddReqChan          chan *ddReqWrapper
+	ready              chan struct{}
 	finish             chan int
 	closer             chan struct{}
 }
 
-func (ddamp *DDAmplifier) SendData(value any) error {
+func (ddamp *ddAmplifier) AppendData(value any) error {
 	ddreq, ok := value.(*ddReqWrapper)
 	if !ok {
 		return comerr.ErrAssertFailed
 	}
 
+	ddamp.header = dkhttp.MergeHeaders(ddamp.header, ddreq.header)
 	ddamp.traces = append(ddamp.traces, ddreq.traces...)
 	for _, trace := range ddreq.traces {
 		ddamp.receivedSpansCount += len(trace)
 	}
 	if ddamp.receivedSpansCount >= ddamp.expectedSpansCount {
-		ddamp.ddReqChan <- ddreq
+		ddamp.ready <- struct{}{}
 	}
 
 	return nil
 }
 
-func (ddamp *DDAmplifier) StartThreads(ctx context.Context) (finish chan struct{}, err error) {
+func (ddamp *ddAmplifier) StartThreads(ctx context.Context) (finish chan struct{}, err error) {
 	if err = ctx.Err(); err != nil {
 		return
 	}
@@ -238,8 +242,8 @@ func (ddamp *DDAmplifier) StartThreads(ctx context.Context) (finish chan struct{
 				log.Println("ddtrace amplifier closed")
 
 				return
-			case traces := <-ddamp.ddReqChan:
-				ddamp.runThreads(traces)
+			case <-ddamp.ready:
+				ddamp.runThreads(&ddReqWrapper{header: ddamp.header, traces: ddamp.traces})
 			case thID := <-ddamp.finish:
 				log.Printf("thread id: %d accomplished", thID)
 				if finished++; finished == ddamp.threads {
@@ -254,7 +258,7 @@ func (ddamp *DDAmplifier) StartThreads(ctx context.Context) (finish chan struct{
 	return
 }
 
-func (ddamp *DDAmplifier) Close() {
+func (ddamp *ddAmplifier) Close() {
 	select {
 	case <-ddamp.closer:
 		return
@@ -263,7 +267,7 @@ func (ddamp *DDAmplifier) Close() {
 	}
 }
 
-func (ddamp *DDAmplifier) runThreads(ddreq *ddReqWrapper) {
+func (ddamp *ddAmplifier) runThreads(ddreq *ddReqWrapper) {
 	client := http.Client{Transport: newSingleHostTransport()}
 	for i := 1; i <= ddamp.threads; i++ {
 		dupli := duplicateDDTraces(ddreq.traces)
@@ -276,7 +280,7 @@ func (ddamp *DDAmplifier) runThreads(ddreq *ddReqWrapper) {
 					if err != nil {
 						log.Fatalln(err)
 					}
-					req.Header = ddreq.headers
+					req.Header = ddreq.header
 					resp, err := client.Do(req)
 					if err != nil {
 						log.Println(err.Error())
@@ -326,8 +330,8 @@ func changeIDs(traces pb.Traces) {
 	}
 }
 
-func newDDAmplifier(ip string, port int, path string, expectedSpansCount, threads, repeat int) *DDAmplifier {
-	return &DDAmplifier{
+func newDDAmplifier(ip string, port int, path string, expectedSpansCount, threads, repeat int) *ddAmplifier {
+	return &ddAmplifier{
 		colAddr:            fmt.Sprintf("http://%s:%d%s", ip, port, path),
 		expectedSpansCount: expectedSpansCount,
 		threads:            threads,

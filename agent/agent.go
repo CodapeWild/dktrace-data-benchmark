@@ -23,12 +23,19 @@ import (
 
 type Agent interface{}
 
+type ThreadHandler func(value any) error
+
 /*
-	Amplifier is a client and capable to send traces to backend collector
-	with multiple threads.
+	Amplifier is a client and is capable of starting multiple threads to send traces data to endpoint collector
 */
 type Amplifier interface {
-	SendData(value any) error
+	AppendData(value any) error
 	StartThreads(ctx context.Context) (finish chan struct{}, err error)
+	// RegisterThreadHandlers(before, run, after ThreadHandler)
 	Close()
+}
+
+type GeneralTraceAmplifier struct {
+	threads, repeatTimes                  int
+	expectedSpanCount, receivedSpansCount int
 }

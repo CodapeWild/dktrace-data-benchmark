@@ -19,11 +19,16 @@ package agent
 
 import (
 	"context"
+	"io"
 	"log"
 	"net/http"
+
+	"github.com/CodapeWild/devkit/comerr"
+	"github.com/uber/jaeger-client-go/thrift"
+	"github.com/uber/jaeger-client-go/thrift-gen/jaeger"
 )
 
-var _ Amplifier = (*JgAmplifier)(nil)
+var _ Amplifier = (*jgAmplifier)(nil)
 
 var (
 	jgV01            = "v01"
@@ -68,29 +73,75 @@ func handleJgTracesWrapper(pattern, version string, amp Amplifier) http.HandlerF
 			log.Printf("%s: %v", k, v)
 		}
 
+		var (
+			batch *jaeger.Batch
+			err   error
+		)
 		switch version {
 		case jgV01:
+			batch, err = decodeJgBinaryProtocol(req.Body)
 		default:
+			err = comerr.ErrUnrecognizedParameters(version)
+		}
+
+		if err != nil {
+			log.Println(err.Error())
+
+			return
+		} else if len(batch.Spans) == 0 {
+			log.Println("jg: empty trace")
+
+			return
 		}
 	}
 }
 
-type JgAmplifier struct {
+func decodeJgBinaryProtocol(r io.Reader) (*jaeger.Batch, error) {
+	tmbuf := thrift.NewTMemoryBuffer()
+	_, err := tmbuf.ReadFrom(r)
+	if err != nil {
+		return nil, err
+	}
+
+	var (
+		trans = thrift.NewTBinaryProtocolConf(tmbuf, &thrift.TConfiguration{})
+		batch = &jaeger.Batch{}
+	)
+
+	return batch, batch.Read(context.Background(), trans)
 }
 
-func (jgamp *JgAmplifier) SendData(value any) error {
+func encodeJgBinaryProtocol(batch *jaeger.Batch) ([]byte, error) {
+	if batch == nil {
+		return nil, comerr.ErrInvalidParameters
+	}
+
+	tmbuf := thrift.NewTMemoryBuffer()
+	trans := thrift.NewTBinaryProtocolConf(tmbuf, &thrift.TConfiguration{})
+	err := batch.Write(context.Background(), trans)
+	if err != nil {
+		return nil, err
+	}
+
+	return tmbuf.Bytes(), nil
+}
+
+type jgAmplifier struct {
+}
+
+func (jgamp *jgAmplifier) AppendData(value any) error {
 	return nil
 }
 
-func (jgamp *JgAmplifier) StartThreads(ctx context.Context) (finish chan struct{}, err error) {
+func (jgamp *jgAmplifier) StartThreads(ctx context.Context) (finish chan struct{}, err error) {
 	return
 }
 
-func (jgamp *JgAmplifier) Close() {
+func (jgamp *jgAmplifier) Close() {
 
 }
 
-func newJgAmplifier(ip string, port int, path string, expectedSpansCount, threads, repeat int) *JgAmplifier {
+func newJgAmplifier(ip string, port int, path string, expectedSpansCount, threads, repeat int) *jgAmplifier {
 	return nil
 }
 

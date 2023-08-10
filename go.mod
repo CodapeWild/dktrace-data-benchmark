@@ -3,7 +3,7 @@ module github.com/CodapeWild/dktrace-data-benchmark
 go 1.18
 
 require (
-	github.com/CodapeWild/devkit v0.0.0-20230802071610-d6f50ffdeef3
+	github.com/CodapeWild/devkit v0.0.0-20230810114359-06f2a041b590
 	github.com/DataDog/datadog-agent/pkg/trace v0.44.1
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/spf13/cobra v1.7.0
