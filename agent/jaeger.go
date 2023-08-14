@@ -18,17 +18,18 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 
 	"github.com/CodapeWild/devkit/comerr"
+	dkhttp "github.com/CodapeWild/devkit/net/http"
 	"github.com/uber/jaeger-client-go/thrift"
 	"github.com/uber/jaeger-client-go/thrift-gen/jaeger"
 )
-
-var _ Amplifier = (*jgAmplifier)(nil)
 
 var (
 	jgV01            = "v01"
@@ -36,10 +37,6 @@ var (
 		"/apis/traces": jgV01,
 	}
 )
-
-type jgReqWrapper struct {
-	headers http.Header
-}
 
 type JgAgent struct {
 	http.ServeMux
@@ -53,7 +50,7 @@ func (jga *JgAgent) Start(addr string) {
 	}()
 }
 
-func newJgAgent(amp Amplifier) *JgAgent {
+func newJgAgent(amp *jgAmplifier) *JgAgent {
 	if amp == nil {
 		log.Fatalln("traces amplifier for jaeger agent can not be nil")
 	}
@@ -66,7 +63,7 @@ func newJgAgent(amp Amplifier) *JgAgent {
 	return agent
 }
 
-func handleJgTracesWrapper(pattern, version string, amp Amplifier) http.HandlerFunc {
+func handleJgTracesWrapper(pattern, version string, amp *jgAmplifier) http.HandlerFunc {
 	return func(resp http.ResponseWriter, req *http.Request) {
 		log.Println("jg: received http headers")
 		for k, v := range req.Header {
@@ -126,30 +123,158 @@ func encodeJgBinaryProtocol(batch *jaeger.Batch) ([]byte, error) {
 	return tmbuf.Bytes(), nil
 }
 
+type jgReqWrapper struct {
+	header http.Header
+	batch  *jaeger.Batch
+}
+
 type jgAmplifier struct {
+	expectedSpansCount, receivedSpansCount int
+	threads, repeat                        int
+	header                                 http.Header
+	batch                                  *jaeger.Batch
+	ready                                  chan struct{}
+	close                                  chan struct{}
 }
 
-func (jgamp *jgAmplifier) AppendData(value any) error {
-	return nil
+func (jgamp *jgAmplifier) AppendTrace(jgreq *jgReqWrapper) {
+	if jgreq.batch == nil || len(jgreq.batch.Spans) == 0 {
+		return
+	}
+
+	jgamp.header = dkhttp.MergeHeaders(jgamp.header, jgreq.header)
+	jgamp.batch.Spans = append(jgamp.batch.Spans, jgreq.batch.Spans...)
+	jgamp.receivedSpansCount += len(jgreq.batch.Spans)
+	if jgamp.receivedSpansCount >= jgamp.expectedSpansCount {
+		jgamp.ready <- struct{}{}
+	}
 }
 
-func (jgamp *jgAmplifier) StartThreads(ctx context.Context) (finish chan struct{}, err error) {
+func (jgamp *jgAmplifier) StartThreads(ctx context.Context, endpoint string) (finish chan struct{}, err error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	finish = make(chan struct{})
+	go func() {
+		var (
+			finished   int
+			threadDown = make(chan int)
+		)
+		for {
+			select {
+			case <-ctx.Done():
+				if err := ctx.Err(); err != nil {
+					log.Printf("error: %s", err.Error())
+				} else {
+					log.Println("amplifier context done")
+				}
+
+				return
+			case <-jgamp.close:
+				log.Println("amplifier closed")
+
+				return
+			case <-jgamp.ready:
+
+			case thID := <-threadDown:
+				log.Printf("thread id: %d accomplished", thID)
+				if finished++; finished == jgamp.threads {
+					finish <- struct{}{}
+
+					return
+				}
+			}
+		}
+	}()
+
 	return
 }
 
 func (jgamp *jgAmplifier) Close() {
-
+	select {
+	case <-jgamp.close:
+	default:
+		close(jgamp.close)
+	}
 }
 
-func newJgAmplifier(ip string, port int, path string, expectedSpansCount, threads, repeat int) *jgAmplifier {
-	return nil
+func (jgamp *jgAmplifier) runThreads(endpoint string, jgreq *jgReqWrapper, threadDown chan int) {
+	client := &http.Client{Transport: newSingleHostTransport()}
+	for i := 1; i <= jgamp.threads; i++ {
+		dupli := duplicateJgBatch(jgreq.batch)
+		go func(batch *jaeger.Batch, i int) {
+			for j := 1; j <= jgamp.repeat; j++ {
+				if buf, err := encodeJgBinaryProtocol(batch); err != nil {
+					log.Println(err.Error())
+				} else {
+					req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewBuffer(buf))
+					if err != nil {
+						log.Fatalln(err)
+					}
+					req.Header = jgreq.header
+					resp, err := client.Do(req)
+					if err != nil {
+						log.Println(err.Error())
+					} else {
+						log.Printf("thread %d send %d times status: %s", i, j, resp.Status)
+						resp.Body.Close()
+					}
+				}
+				changeJgTraceIDs(batch)
+			}
+		}(dupli, i)
+	}
 }
 
-func BuildJgAgentForWork(agentAddress string, endpointIP string, endpointPort int, endpointPath string, expectedSpansCount, threads, repeat int) (context.CancelFunc, chan struct{}, error) {
+func duplicateJgBatch(batch *jaeger.Batch) *jaeger.Batch {
+	buf, err := encodeJgBinaryProtocol(batch)
+	if err != nil {
+		log.Fatalln(err.Error())
+	}
+	dupli := &jaeger.Batch{}
+	if dupli, err = decodeJgBinaryProtocol(bytes.NewBuffer(buf)); err != nil {
+		log.Fatalln(err.Error())
+	}
+
+	return dupli
+}
+
+func changeJgTraceIDs(batch *jaeger.Batch) {
+	var (
+		newtidh = rand.Int63()
+		newtidl = rand.Int63()
+	)
+	for _, span := range batch.Spans {
+		span.TraceIdHigh = newtidh
+		span.TraceIdLow = newtidl
+
+		var (
+			newsid = rand.Int63()
+			oldsid = span.SpanId
+		)
+		span.SpanId = newsid
+		for _, s := range batch.Spans {
+			if s.ParentSpanId == oldsid {
+				span.ParentSpanId = newsid
+				break
+			}
+		}
+	}
+}
+
+func newJgAmplifier(endpointAddress string, expectedSpansCount, threads, repeat int) *jgAmplifier {
+	return &jgAmplifier{
+		threads: threads,
+		repeat:  repeat,
+	}
+}
+
+func BuildJgAgentForWork(agentAddress, endpointAddress string, expectedSpansCount, threads, repeat int) (context.CancelFunc, chan struct{}, error) {
 	ctx, canceler := context.WithCancel(context.TODO())
 
-	ampf := newJgAmplifier(endpointIP, endpointPort, endpointPath, expectedSpansCount, threads, repeat)
-	finish, err := ampf.StartThreads(ctx)
+	ampf := newJgAmplifier(endpointAddress, expectedSpansCount, threads, repeat)
+	finish, err := ampf.StartThreads(ctx, endpointAddress)
 	if err != nil {
 		return nil, nil, err
 	}

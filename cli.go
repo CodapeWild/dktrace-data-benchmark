@@ -30,7 +30,7 @@ import (
 var rootCmd = &cobra.Command{
 	Use:     "dktrace-data-benchmark",
 	Aliases: []string{"dkb", "dkbench"},
-	Short:   "benchmark widget written for Datakit trace test",
+	Short:   "benchmark widget written for Datakit testing of trace modules",
 }
 
 // configCmd represents the config command
