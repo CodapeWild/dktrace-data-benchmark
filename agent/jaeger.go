@@ -90,6 +90,8 @@ func handleJgTracesWrapper(pattern, version string, amp *jgAmplifier) http.Handl
 
 			return
 		}
+
+		amp.AppendTrace(&jgReqWrapper{header: req.Header, batch: batch})
 	}
 }
 
@@ -143,7 +145,11 @@ func (jgamp *jgAmplifier) AppendTrace(jgreq *jgReqWrapper) {
 	}
 
 	jgamp.header = dkhttp.MergeHeaders(jgamp.header, jgreq.header)
-	jgamp.batch.Spans = append(jgamp.batch.Spans, jgreq.batch.Spans...)
+	if jgamp.batch == nil {
+		jgamp.batch = jgreq.batch
+	} else {
+		jgamp.batch.Spans = append(jgamp.batch.Spans, jgreq.batch.Spans...)
+	}
 	jgamp.receivedSpansCount += len(jgreq.batch.Spans)
 	if jgamp.receivedSpansCount >= jgamp.expectedSpansCount {
 		jgamp.ready <- struct{}{}
@@ -176,7 +182,7 @@ func (jgamp *jgAmplifier) StartThreads(ctx context.Context, endpoint string) (fi
 
 				return
 			case <-jgamp.ready:
-
+				jgamp.runThreads(endpoint, &jgReqWrapper{header: jgamp.header, batch: jgamp.batch}, threadDown)
 			case thID := <-threadDown:
 				log.Printf("thread id: %d accomplished", thID)
 				if finished++; finished == jgamp.threads {
@@ -223,6 +229,7 @@ func (jgamp *jgAmplifier) runThreads(endpoint string, jgreq *jgReqWrapper, threa
 				}
 				changeJgTraceIDs(batch)
 			}
+			threadDown <- i
 		}(dupli, i)
 	}
 }
@@ -265,8 +272,11 @@ func changeJgTraceIDs(batch *jaeger.Batch) {
 
 func newJgAmplifier(endpointAddress string, expectedSpansCount, threads, repeat int) *jgAmplifier {
 	return &jgAmplifier{
-		threads: threads,
-		repeat:  repeat,
+		expectedSpansCount: expectedSpansCount,
+		threads:            threads,
+		repeat:             repeat,
+		ready:              make(chan struct{}),
+		close:              make(chan struct{}),
 	}
 }
 

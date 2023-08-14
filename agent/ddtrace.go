@@ -325,6 +325,7 @@ func newDDAmplifier(expectedSpansCount, threads, repeat int) *ddAmplifier {
 		expectedSpansCount: expectedSpansCount,
 		threads:            threads,
 		repeat:             repeat,
+		ready:              make(chan struct{}),
 		close:              make(chan struct{}),
 	}
 }
