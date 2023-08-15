@@ -4,7 +4,7 @@ under progression still
 
 ## how to use this repo
 
-run the command in your shell check the full help document
+run the command below in your shell to check the full help document.
 
 ```shell
 ./dktrace-data-benchmark -h

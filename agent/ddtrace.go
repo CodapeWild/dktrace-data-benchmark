@@ -188,12 +188,11 @@ type ddReqWrapper struct {
 }
 
 type ddAmplifier struct {
+	*GeneralAmplifier
 	expectedSpansCount, receivedSpansCount int
-	threads, repeat                        int
 	header                                 http.Header
 	traces                                 pb.Traces
-	ready                                  chan struct{}
-	close                                  chan struct{}
+	ready                                  chan any
 }
 
 func (ddamp *ddAmplifier) AppendTrace(ddreq *ddReqWrapper) {
@@ -203,87 +202,46 @@ func (ddamp *ddAmplifier) AppendTrace(ddreq *ddReqWrapper) {
 		ddamp.receivedSpansCount += len(trace)
 	}
 	if ddamp.receivedSpansCount >= ddamp.expectedSpansCount {
-		ddamp.ready <- struct{}{}
+		ddamp.ready <- &ddReqWrapper{header: ddamp.header, traces: ddamp.traces}
 	}
 }
 
 func (ddamp *ddAmplifier) StartThreads(ctx context.Context, endpoint string) (finish chan struct{}, err error) {
-	if err = ctx.Err(); err != nil {
-		return
+	return ddamp.GeneralAmplifier.StartThreads(ctx, endpoint, ddamp.ready)
+}
+
+func ddAmplifierThread(ID int, ctx context.Context, endpoint string, repeat int, trace any, threadDown chan int) error {
+	ddreq, ok := trace.(*ddReqWrapper)
+	if !ok {
+		return comerr.ErrAssertFailed
 	}
 
-	finish = make(chan struct{})
-	go func() {
-		var (
-			finished   int
-			threadDown = make(chan int)
-		)
-		for {
-			select {
-			case <-ctx.Done():
-				if err := ctx.Err(); err != nil {
-					log.Printf("error: %s", err.Error())
-				} else {
-					log.Println("amplifier context done")
-				}
-
-				return
-			case <-ddamp.close:
-				log.Println("amplifier closed")
-
-				return
-			case <-ddamp.ready:
-				ddamp.runThreads(endpoint, &ddReqWrapper{header: ddamp.header, traces: ddamp.traces}, threadDown)
-			case thID := <-threadDown:
-				log.Printf("thread id: %d accomplished", thID)
-				if finished++; finished == ddamp.threads {
-					finish <- struct{}{}
-
-					return
-				}
+	var (
+		client  = &http.Client{Transport: newSingleHostTransport()}
+		replica = duplicateDDTraces(ddreq.traces)
+	)
+	for i := 1; i <= repeat; i++ {
+		if buf, err := replica.MarshalMsg(nil); err != nil {
+			log.Println(err.Error())
+		} else {
+			req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewBuffer(buf))
+			if err != nil {
+				log.Fatalln(err)
+			}
+			req.Header = ddreq.header
+			resp, err := client.Do(req)
+			if err != nil {
+				log.Println(err.Error())
+			} else {
+				log.Printf("thread %d send %d times status: %s", ID, i, resp.Status)
+				resp.Body.Close()
 			}
 		}
-	}()
-
-	return
-}
-
-func (ddamp *ddAmplifier) Close() {
-	select {
-	case <-ddamp.close:
-		return
-	default:
-		close(ddamp.close)
+		changeDDTracesIDs(replica)
 	}
-}
+	threadDown <- ID
 
-func (ddamp *ddAmplifier) runThreads(endpoint string, ddreq *ddReqWrapper, threadDown chan int) {
-	client := &http.Client{Transport: newSingleHostTransport()}
-	for i := 1; i <= ddamp.threads; i++ {
-		dupli := duplicateDDTraces(ddreq.traces)
-		go func(traces pb.Traces, i int) {
-			for j := 1; j <= ddamp.repeat; j++ {
-				if buf, err := traces.MarshalMsg(nil); err != nil {
-					log.Println(err.Error())
-				} else {
-					req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewBuffer(buf))
-					if err != nil {
-						log.Fatalln(err)
-					}
-					req.Header = ddreq.header
-					resp, err := client.Do(req)
-					if err != nil {
-						log.Println(err.Error())
-					} else {
-						log.Printf("thread %d send %d times status: %s", i, j, resp.Status)
-						resp.Body.Close()
-					}
-				}
-				changeDDTracesIDs(traces)
-			}
-			threadDown <- i
-		}(dupli, i)
-	}
+	return nil
 }
 
 func duplicateDDTraces(traces pb.Traces) pb.Traces {
@@ -322,15 +280,13 @@ func changeDDTracesIDs(traces pb.Traces) {
 
 func newDDAmplifier(expectedSpansCount, threads, repeat int) *ddAmplifier {
 	return &ddAmplifier{
+		GeneralAmplifier:   NewGeneralAmplifier("ddtrace", threads, repeat, ddAmplifierThread),
 		expectedSpansCount: expectedSpansCount,
-		threads:            threads,
-		repeat:             repeat,
-		ready:              make(chan struct{}),
-		close:              make(chan struct{}),
+		ready:              make(chan any),
 	}
 }
 
-func BuildDDAgentForWork(agentAddress, endpointAddress string, expectedSpansCount, threads, repeat int) (context.CancelFunc, chan struct{}, error) {
+func StartDDAgent(agentAddress, endpointAddress string, expectedSpansCount, threads, repeat int) (context.CancelFunc, chan struct{}, error) {
 	ctx, canceler := context.WithCancel(context.TODO())
 
 	ampf := newDDAmplifier(expectedSpansCount, threads, repeat)

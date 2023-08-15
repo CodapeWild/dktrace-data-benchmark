@@ -131,12 +131,11 @@ type jgReqWrapper struct {
 }
 
 type jgAmplifier struct {
+	*GeneralAmplifier
 	expectedSpansCount, receivedSpansCount int
-	threads, repeat                        int
 	header                                 http.Header
 	batch                                  *jaeger.Batch
-	ready                                  chan struct{}
-	close                                  chan struct{}
+	ready                                  chan any
 }
 
 func (jgamp *jgAmplifier) AppendTrace(jgreq *jgReqWrapper) {
@@ -152,49 +151,12 @@ func (jgamp *jgAmplifier) AppendTrace(jgreq *jgReqWrapper) {
 	}
 	jgamp.receivedSpansCount += len(jgreq.batch.Spans)
 	if jgamp.receivedSpansCount >= jgamp.expectedSpansCount {
-		jgamp.ready <- struct{}{}
+		jgamp.ready <- &jgReqWrapper{header: jgamp.header, batch: jgamp.batch}
 	}
 }
 
 func (jgamp *jgAmplifier) StartThreads(ctx context.Context, endpoint string) (finish chan struct{}, err error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-
-	finish = make(chan struct{})
-	go func() {
-		var (
-			finished   int
-			threadDown = make(chan int)
-		)
-		for {
-			select {
-			case <-ctx.Done():
-				if err := ctx.Err(); err != nil {
-					log.Printf("error: %s", err.Error())
-				} else {
-					log.Println("amplifier context done")
-				}
-
-				return
-			case <-jgamp.close:
-				log.Println("amplifier closed")
-
-				return
-			case <-jgamp.ready:
-				jgamp.runThreads(endpoint, &jgReqWrapper{header: jgamp.header, batch: jgamp.batch}, threadDown)
-			case thID := <-threadDown:
-				log.Printf("thread id: %d accomplished", thID)
-				if finished++; finished == jgamp.threads {
-					finish <- struct{}{}
-
-					return
-				}
-			}
-		}
-	}()
-
-	return
+	return jgamp.GeneralAmplifier.StartThreads(ctx, endpoint, jgamp.ready)
 }
 
 func (jgamp *jgAmplifier) Close() {
@@ -205,33 +167,38 @@ func (jgamp *jgAmplifier) Close() {
 	}
 }
 
-func (jgamp *jgAmplifier) runThreads(endpoint string, jgreq *jgReqWrapper, threadDown chan int) {
-	client := &http.Client{Transport: newSingleHostTransport()}
-	for i := 1; i <= jgamp.threads; i++ {
-		dupli := duplicateJgBatch(jgreq.batch)
-		go func(batch *jaeger.Batch, i int) {
-			for j := 1; j <= jgamp.repeat; j++ {
-				if buf, err := encodeJgBinaryProtocol(batch); err != nil {
-					log.Println(err.Error())
-				} else {
-					req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewBuffer(buf))
-					if err != nil {
-						log.Fatalln(err)
-					}
-					req.Header = jgreq.header
-					resp, err := client.Do(req)
-					if err != nil {
-						log.Println(err.Error())
-					} else {
-						log.Printf("thread %d send %d times status: %s", i, j, resp.Status)
-						resp.Body.Close()
-					}
-				}
-				changeJgTraceIDs(batch)
-			}
-			threadDown <- i
-		}(dupli, i)
+func jgAmplifierThread(ID int, ctx context.Context, endpoint string, repeat int, trace any, threadDown chan int) error {
+	jgreq, ok := trace.(*jgReqWrapper)
+	if !ok {
+		return comerr.ErrAssertFailed
 	}
+
+	var (
+		client  = &http.Client{Transport: newSingleHostTransport()}
+		replica = duplicateJgBatch(jgreq.batch)
+	)
+	for i := 1; i <= repeat; i++ {
+		if buf, err := encodeJgBinaryProtocol(replica); err != nil {
+			log.Println(err.Error())
+		} else {
+			req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewBuffer(buf))
+			if err != nil {
+				log.Fatalln(err)
+			}
+			req.Header = jgreq.header
+			resp, err := client.Do(req)
+			if err != nil {
+				log.Println(err.Error())
+			} else {
+				log.Printf("thread %d send %d times status: %s", ID, i, resp.Status)
+				resp.Body.Close()
+			}
+		}
+		changeJgTraceIDs(replica)
+	}
+	threadDown <- ID
+
+	return nil
 }
 
 func duplicateJgBatch(batch *jaeger.Batch) *jaeger.Batch {
@@ -272,15 +239,13 @@ func changeJgTraceIDs(batch *jaeger.Batch) {
 
 func newJgAmplifier(endpointAddress string, expectedSpansCount, threads, repeat int) *jgAmplifier {
 	return &jgAmplifier{
+		GeneralAmplifier:   NewGeneralAmplifier("jaeger", threads, repeat, jgAmplifierThread),
 		expectedSpansCount: expectedSpansCount,
-		threads:            threads,
-		repeat:             repeat,
-		ready:              make(chan struct{}),
-		close:              make(chan struct{}),
+		ready:              make(chan any),
 	}
 }
 
-func BuildJgAgentForWork(agentAddress, endpointAddress string, expectedSpansCount, threads, repeat int) (context.CancelFunc, chan struct{}, error) {
+func StartJgAgent(agentAddress, endpointAddress string, expectedSpansCount, threads, repeat int) (context.CancelFunc, chan struct{}, error) {
 	ctx, canceler := context.WithCancel(context.TODO())
 
 	ampf := newJgAmplifier(endpointAddress, expectedSpansCount, threads, repeat)

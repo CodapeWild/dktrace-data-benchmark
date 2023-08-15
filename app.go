@@ -103,7 +103,7 @@ func benchDDTraceCollector(taskConf *taskConfig) (canceler context.CancelFunc, f
 
 	tr := r.createTree(&DDTracerWrapper{})
 	agentAddress := newRandomPortWithLocalHost()
-	canceler, finish, err = agent.BuildDDAgentForWork(agentAddress, fmt.Sprintf("http://%s:%d%s", taskConf.CollectorIP, taskConf.CollectorPort, taskConf.CollectorPath), tr.count(), taskConf.SendThreads, taskConf.SendTimesPerThread)
+	canceler, finish, err = agent.StartDDAgent(agentAddress, fmt.Sprintf("http://%s:%d%s", taskConf.CollectorIP, taskConf.CollectorPort, taskConf.CollectorPath), tr.count(), taskConf.SendThreads, taskConf.SendTimesPerThread)
 	if err != nil {
 		return
 	}
@@ -120,7 +120,7 @@ func benchJaegerCollector(taskConf *taskConfig) (canceler context.CancelFunc, fi
 
 	tr := r.createTree(&JgTracerWrapper{})
 	agentAddress := newRandomPortWithLocalHost()
-	canceler, finish, err = agent.BuildJgAgentForWork(agentAddress, fmt.Sprintf("http://%s:%d%s", taskConf.CollectorIP, taskConf.CollectorPort, taskConf.CollectorPath), tr.count(), taskConf.SendThreads, taskConf.SendTimesPerThread)
+	canceler, finish, err = agent.StartJgAgent(agentAddress, fmt.Sprintf("http://%s:%d%s", taskConf.CollectorIP, taskConf.CollectorPort, taskConf.CollectorPath), tr.count(), taskConf.SendThreads, taskConf.SendTimesPerThread)
 	if err != nil {
 		return
 	}
